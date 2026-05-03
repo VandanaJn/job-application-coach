@@ -1,0 +1,32 @@
+{
+  "mcpServers": {
+    "aws-docs": {
+      "command": "uv",
+      "args": ["tool", "run", "--from", "awslabs.aws-documentation-mcp-server@latest", "awslabs.aws-documentation-mcp-server.exe"],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "ERROR",
+        "AWS_DOCUMENTATION_PARTITION": "aws"
+      }
+    },
+    "aws-iac": {
+      "command": "uv",
+      "args": ["tool", "run", "--from", "awslabs.aws-iac-mcp-server@latest", "awslabs.aws-iac-mcp-server.exe"],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "ERROR",
+        "AWS_PROFILE": "default",
+        "AWS_REGION": "us-east-1"
+      }
+    },
+    "agentcore": {
+      "command": "uv",
+      "args": ["tool", "run", "--from", "awslabs.amazon-bedrock-agentcore-mcp-server@latest", "awslabs.amazon-bedrock-agentcore-mcp-server.exe"],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "ERROR"
+      }
+    },
+    "context7": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "@upstash/context7-mcp@latest"]
+    }
+  }
+}

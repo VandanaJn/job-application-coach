@@ -1,0 +1,8 @@
+{
+  "enabledMcpjsonServers": [
+    "aws-docs",
+    "aws-iac",
+    "agentcore",
+    "context7"
+  ]
+}
