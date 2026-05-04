@@ -51,6 +51,36 @@ class _ApiLocalBundler:
             return False
 
 
+@jsii.implements(ILocalBundling)
+class _RunnerLocalBundler:
+    """Bundles the Runner Lambda — includes graph/ and agents/ alongside the handler."""
+
+    def __init__(self, project_root: str) -> None:
+        self._root = project_root
+
+    def try_bundle(self, output_dir: str, options: BundlingOptions) -> bool:
+        try:
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install",
+                "-r", os.path.join(self._root, "lambda", "runner", "requirements.txt"),
+                "-t", output_dir, "--quiet",
+            ])
+            for pkg in ("graph", "agents"):
+                shutil.copytree(
+                    os.path.join(self._root, pkg),
+                    os.path.join(output_dir, pkg),
+                    dirs_exist_ok=True,
+                )
+            shutil.copy(
+                os.path.join(self._root, "lambda", "runner", "handler.py"),
+                output_dir,
+            )
+            return True
+        except Exception as exc:
+            print(f"Local bundling failed, falling back to Docker: {exc}")
+            return False
+
+
 class JobCoachStack(Stack):
     def __init__(
         self,
@@ -175,7 +205,19 @@ class JobCoachStack(Stack):
             function_name=f"{prefix}-runner",
             runtime=lambda_.Runtime.PYTHON_3_12,
             handler="handler.handler",
-            code=lambda_.Code.from_asset(os.path.join(lambda_root, "runner")),
+            code=lambda_.Code.from_asset(
+                project_root,
+                bundling=BundlingOptions(
+                    image=lambda_.Runtime.PYTHON_3_12.bundling_image,
+                    local=_RunnerLocalBundler(project_root),
+                    command=[
+                        "bash", "-c",
+                        "pip install -r lambda/runner/requirements.txt -t /asset-output --quiet"
+                        " && cp -r graph agents /asset-output"
+                        " && cp lambda/runner/handler.py /asset-output",
+                    ],
+                ),
+            ),
             timeout=Duration.minutes(15),
             memory_size=1024,
             environment=shared_env,
