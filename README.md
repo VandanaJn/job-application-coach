@@ -47,7 +47,7 @@ All agents orchestrated by a **LangGraph StateGraph** with guardrails middleware
 |---|---|
 | Agent orchestration | LangGraph StateGraph |
 | LLM | Claude Haiku 4.5 via AWS Bedrock |
-| LLM framework | LangChain (LCEL) |
+| LLM framework | LangChain (create_agent pattern) |
 | Observability | LangSmith (tracing + evals) |
 | Guardrails | Amazon Bedrock Guardrails + custom validators |
 | API | FastAPI on AWS Lambda |
@@ -70,16 +70,15 @@ All agents orchestrated by a **LangGraph StateGraph** with guardrails middleware
 ### Backend
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
+# Install dev dependencies
+python -m pip install -r requirements-dev.txt
 
 # Configure environment
 cp .env.example .env
 # Edit .env with your AWS region, LangSmith key, etc.
 
 # Run tests
-python -m pytest
+make test
 
 # Run locally (without Lambda)
 python graph/orchestrator.py
@@ -88,14 +87,12 @@ python graph/orchestrator.py
 ### Frontend
 
 ```bash
-cd frontend
-npm install
+make install-frontend
 
-# Configure environment
-cp .env.example .env.local
-# Set VITE_API_URL to your API Gateway URL (or local dev server)
+# Configure environment — set VITE_API_URL to your API Gateway URL
+cp frontend/.env.example frontend/.env.local
 
-npm run dev
+make dev
 ```
 
 ---
@@ -118,13 +115,13 @@ cd frontend && npm test
 ## Deployment
 
 ```bash
-cd infra
+# First-time setup
+make install-infra   # create .venv and install CDK deps
+make bootstrap       # one-time CDK bootstrap per AWS account
 
-# Deploy dev stack
-cdk deploy JobCoachDev
-
-# Deploy prod stack (manual)
-cdk deploy JobCoachProd
+# Deploy
+make deploy-dev      # deploy dev stack
+make deploy-prod     # deploy prod stack (manual)
 ```
 
 The frontend runs locally and points to the deployed API Gateway URL via `VITE_API_URL`.
@@ -144,7 +141,6 @@ The frontend runs locally and points to the deployed API Gateway URL via `VITE_A
 ```
 job-application-coach/
 ├── agents/          ← one file per agent
-├── chains/          ← LCEL chains and prompt templates
 ├── graph/           ← LangGraph StateGraph and state definition
 ├── middleware/       ← input validators, guardrail wrappers
 ├── models/          ← Pydantic models

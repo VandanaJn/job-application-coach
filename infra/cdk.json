@@ -1,0 +1,13 @@
+{
+  "app": ".venv\\Scripts\\python app.py",
+  "watch": {
+    "include": ["**"],
+    "exclude": [
+      "README.md",
+      "cdk*.json",
+      "**/__pycache__/**",
+      "**/.venv/**",
+      "cdk.out/**"
+    ]
+  }
+}
