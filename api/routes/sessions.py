@@ -4,8 +4,9 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, UploadFile, File, HTTPException
 
 from api.config import config
-from models.session import SessionResponse, ResumeUploadResponse
+from models.session import SessionResponse, ResumeUploadResponse, JobRequest, JobResponse
 from parsers.pdf import extract_text
+from parsers.job import fetch_job_from_url
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -61,3 +62,60 @@ def upload_resume(session_id: str, resume: UploadFile = File(...)):
     )
 
     return ResumeUploadResponse(session_id=session_id, resume_text_length=len(text))
+
+
+@router.post("/{session_id}/job", response_model=JobResponse)
+def post_job(session_id: str, body: JobRequest):
+    table = _table()
+    result = table.get_item(Key={"user_id": config.user_id, "session_id": session_id})
+    if "Item" not in result:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if body.url:
+        try:
+            parsed = fetch_job_from_url(body.url)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        job_title = parsed.get("job_title") or body.job_title
+        company = parsed.get("company") or body.company
+        job_description = parsed["job_description"]
+    else:
+        job_title = body.job_title
+        company = body.company
+        job_description = body.job_description
+
+    table.update_item(
+        Key={"user_id": config.user_id, "session_id": session_id},
+        UpdateExpression="SET job_title = :t, company = :c, job_description = :d",
+        ExpressionAttributeValues={
+            ":t": job_title or "",
+            ":c": company or "",
+            ":d": job_description,
+        },
+    )
+
+    return JobResponse(
+        session_id=session_id,
+        job_title=job_title,
+        company=company,
+        job_description=job_description,
+    )
+
+
+@router.get("/{session_id}/job", response_model=JobResponse)
+def get_job(session_id: str):
+    table = _table()
+    result = table.get_item(Key={"user_id": config.user_id, "session_id": session_id})
+    if "Item" not in result:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    item = result["Item"]
+    if "job_description" not in item:
+        raise HTTPException(status_code=404, detail="Job not set for this session")
+
+    return JobResponse(
+        session_id=session_id,
+        job_title=item.get("job_title"),
+        company=item.get("company"),
+        job_description=item["job_description"],
+    )

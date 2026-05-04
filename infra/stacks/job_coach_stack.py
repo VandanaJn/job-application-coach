@@ -1,8 +1,14 @@
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
+import sys
+import jsii
 from aws_cdk import (
+    BundlingOptions,
     Duration,
+    ILocalBundling,
     RemovalPolicy,
     Stack,
     aws_apigateway as apigw,
@@ -13,6 +19,36 @@ from aws_cdk import (
     aws_s3 as s3,
 )
 from constructs import Construct
+
+
+@jsii.implements(ILocalBundling)
+class _ApiLocalBundler:
+    """Bundles the API Lambda without Docker — works on Windows and any CI with Python."""
+
+    def __init__(self, project_root: str) -> None:
+        self._root = project_root
+
+    def try_bundle(self, output_dir: str, options: BundlingOptions) -> bool:
+        try:
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install",
+                "-r", os.path.join(self._root, "lambda", "api", "requirements.txt"),
+                "-t", output_dir, "--quiet",
+            ])
+            for pkg in ("api", "models", "parsers"):
+                shutil.copytree(
+                    os.path.join(self._root, pkg),
+                    os.path.join(output_dir, pkg),
+                    dirs_exist_ok=True,
+                )
+            shutil.copy(
+                os.path.join(self._root, "lambda", "api", "handler.py"),
+                output_dir,
+            )
+            return True
+        except Exception as exc:
+            print(f"Local bundling failed, falling back to Docker: {exc}")
+            return False
 
 
 class JobCoachStack(Stack):
@@ -90,7 +126,8 @@ class JobCoachStack(Stack):
             removal_policy=removal,
         )
 
-        lambda_root = os.path.join(os.path.dirname(__file__), "..", "..", "lambda")
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        lambda_root = os.path.join(project_root, "lambda")
 
         # Lambda — Runner (async LangGraph execution)
         runner_fn = lambda_.Function(
@@ -121,7 +158,19 @@ class JobCoachStack(Stack):
             function_name=f"{prefix}-api",
             runtime=lambda_.Runtime.PYTHON_3_12,
             handler="handler.handler",
-            code=lambda_.Code.from_asset(os.path.join(lambda_root, "api")),
+            code=lambda_.Code.from_asset(
+                project_root,
+                bundling=BundlingOptions(
+                    image=lambda_.Runtime.PYTHON_3_12.bundling_image,
+                    local=_ApiLocalBundler(project_root),
+                    command=[
+                        "bash", "-c",
+                        "pip install -r lambda/api/requirements.txt -t /asset-output --quiet"
+                        " && cp -r api models parsers /asset-output"
+                        " && cp lambda/api/handler.py /asset-output",
+                    ],
+                ),
+            ),
             timeout=Duration.seconds(30),
             memory_size=512,
             environment={
