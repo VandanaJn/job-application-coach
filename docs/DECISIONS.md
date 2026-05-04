@@ -6,6 +6,52 @@ Use this as a reference when discussing the project in interviews.
 
 ---
 
+## ADR-018 — Three-entity data model: User / Job / Session
+
+**Date:** 2026-05-04
+
+**Context:**
+The initial data model stored resume text, job details, and session metadata all on a single Session record. This meant users had to re-upload their resume and re-enter the job description every time they started a new practice session.
+
+**Options considered:**
+- **Single session table** — resume + job + session all in one record; simple but forces repeated uploads
+- **Session + separate resume storage (S3 only)** — resume stays in S3, re-parsed on each run; avoids re-upload but re-parses every time
+- **Three entities: User, Job, Session** — User owns the resume (upload once), Jobs are reusable postings, Sessions are practice runs against a job
+
+**Decision:** Three DynamoDB tables — `users`, `jobs`, `sessions`
+
+**Rationale:**
+- A user realistically has one resume but applies to many jobs; each job can have multiple practice sessions — the three-entity model matches real usage
+- Resume text is extracted once on upload and stored on the User record — no re-parsing overhead per session
+- Jobs are persisted independently — user can start a second practice session for the same job without re-entering anything
+- `POST /sessions` only needs a `job_id`; the runner Lambda fetches resume + job description at run time
+- Schema is multi-user ready: all tables use `user_id` as partition key — adding auth later doesn't require a migration
+
+---
+
+## ADR-017 — Runner Lambda bundles graph/ and agents/ via _RunnerLocalBundler
+
+**Date:** 2026-05-04
+
+**Context:**
+The runner Lambda (`lambda/runner/handler.py`) imports from `graph/` and `agents/`, which live at the project root. Lambda only sees what's in its deployment package — bare `Code.from_asset("lambda/runner")` would copy just the handler file, leaving those imports unresolvable at runtime.
+
+**Options considered:**
+- **Copy graph/ and agents/ into lambda/runner/ by hand** — brittle, requires keeping duplicates in sync
+- **Symlinks** — not supported reliably on Windows or in CDK asset zipping
+- **Docker-based bundling** — always available but requires Docker running locally; slow on Windows
+- **_RunnerLocalBundler (same pattern as _ApiLocalBundler)** — pip-installs deps + shutil.copytree for each package needed; runs without Docker
+
+**Decision:** `_RunnerLocalBundler` in the CDK stack, mirroring the existing `_ApiLocalBundler` pattern
+
+**Rationale:**
+- Consistent with how the API Lambda is already bundled — one pattern to understand
+- No duplicate source files — graph/ and agents/ are copied into the output directory at deploy time, not stored there
+- Falls back to Docker automatically if local bundling fails — same safety net as the API bundler
+- Tests for the bundler (`tests/infra/test_bundler.py`) verify the correct packages are copied
+
+---
+
 ## ADR-015 — create_agent pattern for all agents (no LCEL pipes)
 
 **Date:** 2026-05-03

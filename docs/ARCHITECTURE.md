@@ -52,29 +52,38 @@ GapAnalyzerAgent is deferred. When added, it will slot in before interview_prep 
 
 ## LangGraph State
 
+Current implementation (`graph/state.py`) covers the InterviewPrep step:
+
 ```python
-class CoachState(TypedDict):
+class InterviewQuestion(BaseModel):
+    question: str
+    category: str  # behavioral | technical | situational
+
+class GraphState(TypedDict):
     session_id: str
     user_id: str
-    # Job details
+    job_id: str
     resume_text: str
-    job_title: str
-    company: str
     job_description: str
-    # Config
     num_questions: int          # default 5, configurable per session
+    questions: Optional[list[InterviewQuestion]]
+    status: str                 # running | completed | error
+    error: Optional[str]
+```
+
+Fields to be added as later agents are implemented:
+
+```python
     # Long-term memory (loaded at session start, written at session end)
     user_memory: UserMemory
-    # Agent outputs
-    interview_questions: Annotated[list[Question], ...]
+    # AnswerCoach + Feedback outputs
     current_question_index: int
     conversation_history: Annotated[list[Message], ...]
     answers: Annotated[list[Answer], ...]
     feedback: Annotated[list[Feedback], ...]
-    error: str | None
 ```
 
-`gaps` and `confirmed_gaps` fields will be added when GapAnalyzerAgent is implemented.
+`gaps` and `confirmed_gaps` will be added when GapAnalyzerAgent is implemented.
 
 State is immutable between nodes — each node returns a partial update. LangGraph merges updates using the Annotated reducers (append for lists, replace for scalars).
 
@@ -108,11 +117,19 @@ Guardrails are implemented as dedicated LangGraph nodes rather than decorators o
 ## Session Persistence & Long-Term Memory
 
 ```
+DynamoDB Table: job-coach-users
+  PK: user_id
+  Attributes: resume_text, s3_pdf_key
+
+DynamoDB Table: job-coach-jobs
+  PK: user_id
+  SK: job_id (UUID)
+  Attributes: job_title, company, job_description, created_at
+
 DynamoDB Table: job-coach-sessions
   PK: user_id
   SK: session_id (UUID)
-  Attributes: created_at, updated_at, status, num_questions,
-              resume_text, s3_pdf_key, job_title, company, job_description
+  Attributes: job_id, status, created_at, questions (list), error
 
 DynamoDB Table: job-coach-checkpoints  (LangGraph checkpointer table)
   PK: thread_id (= session_id)
@@ -143,21 +160,27 @@ Browser (local)
       ▼
 API Gateway (REST)
       │
-      ├── POST /sessions               → Lambda (API): create session, store to DynamoDB
-      ├── POST /sessions/{id}/resume   → Lambda (API): upload PDF to S3, parse job details
-      ├── POST /sessions/{id}/run      → Lambda (API): validate input, invoke graph Lambda
-      │                                               async (returns session_id immediately)
+      ├── GET  /user                   → Lambda (API): get user profile (has_resume flag)
+      ├── POST /user/resume            → Lambda (API): upload PDF to S3, extract + store resume text
+      │
+      ├── POST /jobs                   → Lambda (API): save job (URL scrape or text paste)
+      ├── GET  /jobs                   → Lambda (API): list saved jobs
+      ├── GET  /jobs/{job_id}          → Lambda (API): get job details
+      │
+      ├── POST /sessions               → Lambda (API): create session for a job_id
+      ├── GET  /sessions               → Lambda (API): list sessions
+      ├── GET  /sessions/{id}          → Lambda (API): get session
+      ├── POST /sessions/{id}/run      → Lambda (API): invoke runner Lambda async, set status=running
       │                                     └──────→ Lambda (Runner): runs LangGraph graph
-      │                                                  writes status + results to DynamoDB
-      ├── GET  /sessions/{id}/status   → Lambda (API): poll session status (pending/running/completed/error)
-      ├── GET  /sessions/{id}          → Lambda (API): fetch full session state
-      └── GET  /sessions               → Lambda (API): list sessions
+      │                                                  writes questions + status to DynamoDB
+      └── GET  /sessions/{id}/status   → Lambda (API): poll status (pending/running/completed/error)
+                                                        returns questions when completed
             │
             ▼
-        Lambda (FastAPI handler)
+        Lambda (FastAPI + Mangum)
             │
             ├── S3        ← PDF storage
-            ├── DynamoDB  ← session + checkpoint + status storage
+            ├── DynamoDB  ← user, jobs, sessions, checkpoints, memory
             └── Bedrock   ← LLM calls (Claude Haiku 4.5) + Guardrails
                     │
                     └── LangSmith ← traces (async, via background thread)

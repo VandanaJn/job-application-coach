@@ -178,8 +178,11 @@ job-application-coach/
 - AWS_ACCOUNT_ID
 - BEDROCK_MODEL_ID — default: anthropic.claude-haiku-4-5-20251001-v1:0
 - BEDROCK_GUARDRAIL_ID — Bedrock Guardrail ARN
-- DYNAMODB_TABLE_NAME
+- DYNAMODB_TABLE_NAME — sessions table
+- DYNAMODB_USERS_TABLE — user profiles + resume text
+- DYNAMODB_JOBS_TABLE — saved job postings
 - S3_BUCKET_NAME
+- RUNNER_FUNCTION_NAME — Lambda function name for async graph execution (e.g. job-coach-dev-runner)
 - ENVIRONMENT — dev | prod
 
 ### Frontend
