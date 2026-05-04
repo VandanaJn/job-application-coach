@@ -1,2 +1,4 @@
-def handler(event, context):
-    return {"statusCode": 200, "body": "ok"}
+from mangum import Mangum
+from api.app import app
+
+handler = Mangum(app)

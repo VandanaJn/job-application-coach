@@ -20,6 +20,7 @@ help:
 	@echo "  deploy-prod     Deploy prod stack to AWS"
 	@echo ""
 	@echo "Backend"
+	@echo "  run             Run API locally (requires .env)"
 	@echo "  test            Run backend tests"
 	@echo "  test-cov        Run backend tests with coverage"
 	@echo "  lint            Run ruff linter"
@@ -52,6 +53,9 @@ deploy-prod:
 	cd infra && cdk deploy JobCoachProd
 
 # Backend
+run:
+	python -m uvicorn api.app:app --reload --env-file .env
+
 test:
 	python -m pytest
 

@@ -80,8 +80,8 @@ cp .env.example .env
 # Run tests
 make test
 
-# Run locally (without Lambda)
-python graph/orchestrator.py
+# Run API locally (requires .env)
+make run
 ```
 
 ### Frontend
@@ -144,6 +144,7 @@ job-application-coach/
 ├── graph/           ← LangGraph StateGraph and state definition
 ├── middleware/       ← input validators, guardrail wrappers
 ├── models/          ← Pydantic models
+├── parsers/         ← PDF and job description parsers
 ├── api/             ← FastAPI app and route handlers
 ├── evals/           ← LangSmith eval scripts and golden datasets
 ├── infra/           ← AWS CDK stack
