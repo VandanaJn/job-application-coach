@@ -1,94 +1,79 @@
-import io
+import uuid
 import boto3
-from unittest.mock import patch
-from tests.api.conftest import TABLE_NAME, BUCKET_NAME, USER_ID
+from datetime import datetime, timezone
+from tests.api.conftest import SESSIONS_TABLE, JOBS_TABLE, USER_ID
 
 
-def test_create_session_returns_session_id(client):
-    response = client.post("/sessions")
+def _seed_job(dynamodb) -> str:
+    job_id = str(uuid.uuid4())
+    dynamodb.Table(JOBS_TABLE).put_item(Item={
+        "user_id": USER_ID,
+        "job_id": job_id,
+        "job_title": "Engineer",
+        "company": "Acme",
+        "job_description": "Build things.",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return job_id
+
+
+def test_create_session_returns_session_id(client, aws_env):
+    dynamodb, _ = aws_env
+    job_id = _seed_job(dynamodb)
+    response = client.post("/sessions", json={"job_id": job_id})
     assert response.status_code == 200
     data = response.json()
     assert "session_id" in data
     assert data["status"] == "pending"
+    assert data["job_id"] == job_id
 
 
 def test_create_session_stores_record_in_dynamodb(client, aws_env):
     dynamodb, _ = aws_env
-    response = client.post("/sessions")
-    session_id = response.json()["session_id"]
+    job_id = _seed_job(dynamodb)
+    session_id = client.post("/sessions", json={"job_id": job_id}).json()["session_id"]
 
-    table = dynamodb.Table(TABLE_NAME)
-    item = table.get_item(Key={"user_id": USER_ID, "session_id": session_id})
-    assert "Item" in item
-    assert item["Item"]["status"] == "pending"
-    assert "created_at" in item["Item"]
-
-
-def test_upload_resume_returns_ok(client):
-    session_id = client.post("/sessions").json()["session_id"]
-
-    with patch("api.routes.sessions.extract_text", return_value="Extracted resume text"):
-        response = client.post(
-            f"/sessions/{session_id}/resume",
-            files={"resume": ("resume.pdf", io.BytesIO(b"%PDF-1.4 fake"), "application/pdf")},
-        )
-    assert response.status_code == 200
+    item = dynamodb.Table(SESSIONS_TABLE).get_item(
+        Key={"user_id": USER_ID, "session_id": session_id}
+    )["Item"]
+    assert item["status"] == "pending"
+    assert item["job_id"] == job_id
+    assert "created_at" in item
 
 
-def test_upload_resume_stores_pdf_to_s3(client, aws_env):
-    dynamodb, s3 = aws_env
-    session_id = client.post("/sessions").json()["session_id"]
-
-    with patch("api.routes.sessions.extract_text", return_value="Extracted resume text"):
-        client.post(
-            f"/sessions/{session_id}/resume",
-            files={"resume": ("resume.pdf", io.BytesIO(b"%PDF-1.4 fake"), "application/pdf")},
-        )
-
-    objects = s3.list_objects_v2(Bucket=BUCKET_NAME)
-    assert objects["KeyCount"] == 1
-
-
-def test_upload_resume_saves_extracted_text_to_dynamodb(client, aws_env):
-    dynamodb, _ = aws_env
-    session_id = client.post("/sessions").json()["session_id"]
-
-    with patch("api.routes.sessions.extract_text", return_value="Software engineer with 5 years experience"):
-        client.post(
-            f"/sessions/{session_id}/resume",
-            files={"resume": ("resume.pdf", io.BytesIO(b"%PDF-1.4 fake"), "application/pdf")},
-        )
-
-    table = dynamodb.Table(TABLE_NAME)
-    item = table.get_item(Key={"user_id": USER_ID, "session_id": session_id})
-    assert item["Item"]["resume_text"] == "Software engineer with 5 years experience"
-
-
-def test_upload_resume_rejects_non_pdf(client):
-    session_id = client.post("/sessions").json()["session_id"]
-
-    response = client.post(
-        f"/sessions/{session_id}/resume",
-        files={"resume": ("resume.txt", io.BytesIO(b"plain text"), "text/plain")},
-    )
-    assert response.status_code == 400
-
-
-def test_upload_resume_returns_404_for_unknown_session(client):
-    with patch("api.routes.sessions.extract_text", return_value="some text"):
-        response = client.post(
-            "/sessions/nonexistent-id/resume",
-            files={"resume": ("resume.pdf", io.BytesIO(b"%PDF-1.4 fake"), "application/pdf")},
-        )
+def test_create_session_returns_404_for_unknown_job(client):
+    response = client.post("/sessions", json={"job_id": "nonexistent"})
     assert response.status_code == 404
 
 
-def test_upload_resume_returns_400_when_pdf_has_no_text(client):
-    session_id = client.post("/sessions").json()["session_id"]
+def test_list_sessions_returns_all(client, aws_env):
+    dynamodb, _ = aws_env
+    job_id = _seed_job(dynamodb)
+    client.post("/sessions", json={"job_id": job_id})
+    client.post("/sessions", json={"job_id": job_id})
 
-    with patch("api.routes.sessions.extract_text", side_effect=ValueError("no text extracted")):
-        response = client.post(
-            f"/sessions/{session_id}/resume",
-            files={"resume": ("resume.pdf", io.BytesIO(b"%PDF-1.4 fake"), "application/pdf")},
-        )
-    assert response.status_code == 400
+    response = client.get("/sessions")
+    assert response.status_code == 200
+    assert len(response.json()["sessions"]) == 2
+
+
+def test_list_sessions_empty(client):
+    response = client.get("/sessions")
+    assert response.status_code == 200
+    assert response.json()["sessions"] == []
+
+
+def test_get_session_returns_session(client, aws_env):
+    dynamodb, _ = aws_env
+    job_id = _seed_job(dynamodb)
+    session_id = client.post("/sessions", json={"job_id": job_id}).json()["session_id"]
+
+    response = client.get(f"/sessions/{session_id}")
+    assert response.status_code == 200
+    assert response.json()["session_id"] == session_id
+    assert response.json()["job_id"] == job_id
+
+
+def test_get_session_returns_404_for_unknown(client):
+    response = client.get("/sessions/nonexistent")
+    assert response.status_code == 404

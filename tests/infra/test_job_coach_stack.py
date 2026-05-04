@@ -30,8 +30,25 @@ def test_pdf_bucket_has_cors(template):
 
 
 # DynamoDB
-def test_three_dynamodb_tables(template):
-    template.resource_count_is("AWS::DynamoDB::Table", 3)
+def test_five_dynamodb_tables(template):
+    template.resource_count_is("AWS::DynamoDB::Table", 5)
+
+
+def test_users_table_keys(template):
+    template.has_resource_properties("AWS::DynamoDB::Table", {
+        "KeySchema": [{"AttributeName": "user_id", "KeyType": "HASH"}],
+        "BillingMode": "PAY_PER_REQUEST",
+    })
+
+
+def test_jobs_table_keys(template):
+    template.has_resource_properties("AWS::DynamoDB::Table", {
+        "KeySchema": assertions.Match.array_with([
+            {"AttributeName": "user_id", "KeyType": "HASH"},
+            {"AttributeName": "job_id", "KeyType": "RANGE"},
+        ]),
+        "BillingMode": "PAY_PER_REQUEST",
+    })
 
 
 def test_sessions_table_keys(template):

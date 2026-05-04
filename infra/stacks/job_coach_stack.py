@@ -81,7 +81,34 @@ class JobCoachStack(Stack):
             ],
         )
 
-        # DynamoDB — sessions
+        # DynamoDB — user profiles (resume storage)
+        users_table = dynamodb.Table(
+            self,
+            "UsersTable",
+            table_name=f"{prefix}-users",
+            partition_key=dynamodb.Attribute(
+                name="user_id", type=dynamodb.AttributeType.STRING
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=removal,
+        )
+
+        # DynamoDB — saved job postings
+        jobs_table = dynamodb.Table(
+            self,
+            "JobsTable",
+            table_name=f"{prefix}-jobs",
+            partition_key=dynamodb.Attribute(
+                name="user_id", type=dynamodb.AttributeType.STRING
+            ),
+            sort_key=dynamodb.Attribute(
+                name="job_id", type=dynamodb.AttributeType.STRING
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=removal,
+        )
+
+        # DynamoDB — interview practice sessions
         sessions_table = dynamodb.Table(
             self,
             "SessionsTable",
@@ -129,6 +156,18 @@ class JobCoachStack(Stack):
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
         lambda_root = os.path.join(project_root, "lambda")
 
+        shared_env = {
+            "ENVIRONMENT": env_name,
+            "DYNAMODB_TABLE_NAME": sessions_table.table_name,
+            "DYNAMODB_USERS_TABLE": users_table.table_name,
+            "DYNAMODB_JOBS_TABLE": jobs_table.table_name,
+            "DYNAMODB_CHECKPOINTS_TABLE": checkpoints_table.table_name,
+            "DYNAMODB_MEMORY_TABLE": memory_table.table_name,
+            "S3_BUCKET_NAME": pdf_bucket.bucket_name,
+            "BEDROCK_MODEL_ID": "anthropic.claude-haiku-4-5-20251001-v1:0",
+            "BEDROCK_GUARDRAIL_ID": "",
+        }
+
         # Lambda — Runner (async LangGraph execution)
         runner_fn = lambda_.Function(
             self,
@@ -139,15 +178,7 @@ class JobCoachStack(Stack):
             code=lambda_.Code.from_asset(os.path.join(lambda_root, "runner")),
             timeout=Duration.minutes(15),
             memory_size=1024,
-            environment={
-                "ENVIRONMENT": env_name,
-                "DYNAMODB_TABLE_NAME": sessions_table.table_name,
-                "DYNAMODB_CHECKPOINTS_TABLE": checkpoints_table.table_name,
-                "DYNAMODB_MEMORY_TABLE": memory_table.table_name,
-                "S3_BUCKET_NAME": pdf_bucket.bucket_name,
-                "BEDROCK_MODEL_ID": "anthropic.claude-haiku-4-5-20251001-v1:0",
-                "BEDROCK_GUARDRAIL_ID": "",
-            },
+            environment=shared_env,
             log_retention=logs.RetentionDays.ONE_WEEK,
         )
 
@@ -173,21 +204,14 @@ class JobCoachStack(Stack):
             ),
             timeout=Duration.seconds(30),
             memory_size=512,
-            environment={
-                "ENVIRONMENT": env_name,
-                "DYNAMODB_TABLE_NAME": sessions_table.table_name,
-                "DYNAMODB_CHECKPOINTS_TABLE": checkpoints_table.table_name,
-                "DYNAMODB_MEMORY_TABLE": memory_table.table_name,
-                "S3_BUCKET_NAME": pdf_bucket.bucket_name,
-                "RUNNER_FUNCTION_NAME": runner_fn.function_name,
-                "BEDROCK_MODEL_ID": "anthropic.claude-haiku-4-5-20251001-v1:0",
-                "BEDROCK_GUARDRAIL_ID": "",
-            },
+            environment={**shared_env, "RUNNER_FUNCTION_NAME": runner_fn.function_name},
             log_retention=logs.RetentionDays.ONE_WEEK,
         )
 
         # IAM — Runner permissions
         pdf_bucket.grant_read(runner_fn)
+        users_table.grant_read_data(runner_fn)
+        jobs_table.grant_read_data(runner_fn)
         sessions_table.grant_read_write_data(runner_fn)
         checkpoints_table.grant_read_write_data(runner_fn)
         memory_table.grant_read_write_data(runner_fn)
@@ -203,6 +227,8 @@ class JobCoachStack(Stack):
 
         # IAM — API permissions
         pdf_bucket.grant_read_write(api_fn)
+        users_table.grant_read_write_data(api_fn)
+        jobs_table.grant_read_write_data(api_fn)
         sessions_table.grant_read_write_data(api_fn)
         checkpoints_table.grant_read_write_data(api_fn)
         memory_table.grant_read_write_data(api_fn)
@@ -223,6 +249,17 @@ class JobCoachStack(Stack):
 
         integration = apigw.LambdaIntegration(api_fn)
 
+        # /user
+        user = api.root.add_resource("user")
+        user.add_method("GET", integration)
+        user.add_resource("resume").add_method("POST", integration)
+
+        # /jobs
+        jobs = api.root.add_resource("jobs")
+        jobs.add_method("GET", integration)
+        jobs.add_method("POST", integration)
+        jobs.add_resource("{job_id}").add_method("GET", integration)
+
         # /sessions
         sessions = api.root.add_resource("sessions")
         sessions.add_method("GET", integration)
@@ -237,11 +274,3 @@ class JobCoachStack(Stack):
 
         # /sessions/{session_id}/status
         session.add_resource("status").add_method("GET", integration)
-
-        # /sessions/{session_id}/job
-        job = session.add_resource("job")
-        job.add_method("GET", integration)
-        job.add_method("POST", integration)
-
-        # /sessions/{session_id}/resume
-        session.add_resource("resume").add_method("POST", integration)
