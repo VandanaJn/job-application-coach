@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useSessionStatus, useRunSession } from '../hooks/useSessions';
 import type { QuestionItem } from '../types';
 
@@ -64,8 +65,9 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 export default function SessionDetail() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const { data: status, isLoading } = useSessionStatus(sessionId!);
-  const { mutate: runSession } = useRunSession();
+  const { mutate: runSession, isPending: isRunning } = useRunSession();
   const hasTriggeredRun = useRef(false);
 
   useEffect(() => {
@@ -77,7 +79,9 @@ export default function SessionDetail() {
 
   const handleRetry = () => {
     hasTriggeredRun.current = true;
-    runSession(sessionId!);
+    runSession(sessionId!, {
+      onSuccess: () => qc.invalidateQueries({ queryKey: ['sessions', sessionId, 'status'] }),
+    });
   };
 
   if (isLoading) {
@@ -107,11 +111,11 @@ export default function SessionDetail() {
           )}
         </div>
 
-        {(status?.status === 'pending' || status?.status === 'running') && (
+        {(status?.status === 'pending' || status?.status === 'running' || isRunning) && (
           <GeneratingState />
         )}
 
-        {status?.status === 'error' && (
+        {status?.status === 'error' && !isRunning && (
           <ErrorState
             message={status.error ?? 'An unknown error occurred.'}
             onRetry={handleRetry}
