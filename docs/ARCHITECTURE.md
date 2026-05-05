@@ -209,24 +209,21 @@ Evals run in CI on merge to main. Results are posted to the LangSmith dashboard.
 
 ---
 
-## Voice (AnswerCoach)
-
-Voice input uses the browser-native **Web Speech API**:
-- `SpeechRecognition` — transcribes spoken answer to text, sent to AnswerCoachAgent
-- `SpeechSynthesis` — optionally reads coach responses aloud
-
-Works in Chrome and Edge. The React component degrades gracefully — falls back to a text input if the browser doesn't support `SpeechRecognition`.
+## Coaching UI (AnswerCoach)
 
 The back-and-forth coaching loop works as follows:
-1. UI displays the interview question
-2. User types (or speaks via SpeechRecognition) their answer
-3. Text sent to `POST /sessions/{id}/coach` with `question_index` and `user_message`
+1. UI displays the interview question with Prev/Next navigation
+2. User types their answer in the text input and submits (Enter or send button)
+3. Answer sent to `POST /sessions/{id}/coach` with `question_index` and `user_message`
 4. API Lambda invokes the AgentCore Runtime, passing the answer and (on first turn) the question
-5. AgentCore returns a coaching response and `is_complete` flag
-6. UI shows the response; user can refine their answer or move on
+5. AgentCore returns a `coaching_response`, `runtime_session_id`, and `is_complete` flag
+6. UI shows the response in a chat bubble; user can refine their answer or move on
 7. Subsequent turns reuse the same `runtime_session_id` — AgentCore maintains conversation history in-session (microVM stays alive for the session lifetime)
+8. When `is_complete` is true, UI shows a green completion banner; input is hidden
 
-The `runtimeSessionId` is generated client-side on first turn and echoed back in every response, allowing the frontend to maintain the multi-turn session without storing state server-side.
+The `runtime_session_id` is returned by AgentCore in the first response and stored in React state. Subsequent turns include it in the request body so AgentCore routes to the same microVM.
+
+**Voice input (planned, not yet implemented):** Browser Web Speech API (`SpeechRecognition`) for STT, `SpeechSynthesis` for optional TTS. Will degrade to text input if the browser doesn't support `SpeechRecognition` (Chrome/Edge only). Voice logic will be isolated in a `useSpeechInput` hook — swappable for AWS Transcribe later.
 
 ---
 
