@@ -15,5 +15,7 @@ class GraphState(TypedDict):
     job_description: str
     num_questions: int
     questions: Optional[list[InterviewQuestion]]
+    # Maps question_index (str) → AgentCore runtimeSessionId for that question's coaching session
+    coaching_sessions: Optional[dict[str, str]]
     status: str
     error: Optional[str]

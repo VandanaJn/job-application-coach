@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 
 from api.config import config
 from models.session import SessionCreate, SessionResponse, SessionListResponse, SessionStatusResponse, QuestionItem
+from models.coaching import CoachRequest, CoachResponse
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -128,6 +129,48 @@ def run_session(session_id: str):
         job_id=session["job_id"],
         status="running",
         created_at=session["created_at"],
+    )
+
+
+def _agentcore_client():
+    return boto3.client("bedrock-agentcore", region_name=config.aws_region)
+
+
+@router.post("/{session_id}/coach", response_model=CoachResponse)
+def coach_answer(session_id: str, body: CoachRequest):
+    result = _table().get_item(Key={"user_id": config.user_id, "session_id": session_id})
+    if "Item" not in result:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session = result["Item"]
+    questions = session.get("questions")
+    if not questions:
+        raise HTTPException(status_code=400, detail="Session has no questions yet. Run the session first.")
+
+    if body.question_index >= len(questions):
+        raise HTTPException(status_code=400, detail=f"question_index {body.question_index} out of range.")
+
+    is_first_turn = body.runtime_session_id is None
+    runtime_session_id = body.runtime_session_id or str(uuid.uuid4())
+
+    payload: dict = {"prompt": body.user_message, "user_id": config.user_id}
+    if is_first_turn:
+        payload["question"] = questions[body.question_index]["question"]
+
+    agentcore = _agentcore_client()
+    raw = agentcore.invoke_agent_runtime(
+        agentRuntimeArn=config.answer_coach_runtime_arn,
+        qualifier="DEFAULT",
+        runtimeSessionId=runtime_session_id,
+        payload=json.dumps(payload).encode(),
+    )
+    agent_result = json.loads(raw["response"].read())
+
+    return CoachResponse(
+        question_index=body.question_index,
+        coaching_response=agent_result["response"],
+        runtime_session_id=runtime_session_id,
+        is_complete=agent_result.get("is_complete", False),
     )
 
 

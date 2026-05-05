@@ -52,7 +52,7 @@ GapAnalyzerAgent is deferred. When added, it will slot in before interview_prep 
 
 ## LangGraph State
 
-Current implementation (`graph/state.py`) covers the InterviewPrep step:
+Current implementation (`graph/state.py`):
 
 ```python
 class InterviewQuestion(BaseModel):
@@ -67,6 +67,7 @@ class GraphState(TypedDict):
     job_description: str
     num_questions: int          # default 5, configurable per session
     questions: Optional[list[InterviewQuestion]]
+    coaching_sessions: Optional[dict[str, str]]  # question_index → AgentCore runtimeSessionId
     status: str                 # running | completed | error
     error: Optional[str]
 ```
@@ -76,9 +77,7 @@ Fields to be added as later agents are implemented:
 ```python
     # Long-term memory (loaded at session start, written at session end)
     user_memory: UserMemory
-    # AnswerCoach + Feedback outputs
-    current_question_index: int
-    conversation_history: Annotated[list[Message], ...]
+    # Feedback outputs
     answers: Annotated[list[Answer], ...]
     feedback: Annotated[list[Feedback], ...]
 ```
@@ -173,17 +172,21 @@ API Gateway (REST)
       ├── POST /sessions/{id}/run      → Lambda (API): invoke runner Lambda async, set status=running
       │                                     └──────→ Lambda (Runner): runs LangGraph graph
       │                                                  writes questions + status to DynamoDB
-      └── GET  /sessions/{id}/status   → Lambda (API): poll status (pending/running/completed/error)
-                                                        returns questions when completed
+      ├── GET  /sessions/{id}/status   → Lambda (API): poll status (pending/running/completed/error)
+      │                                                 returns questions when completed
+      └── POST /sessions/{id}/coach    → Lambda (API): invoke AgentCore Runtime (AnswerCoachAgent)
+                                              └──────→ AgentCore Runtime (ARM64 container, HTTP/8080)
+                                                           multi-turn per runtimeSessionId
+                                                           reads UserMemory from DynamoDB
             │
             ▼
         Lambda (FastAPI + Mangum)
             │
-            ├── S3        ← PDF storage
-            ├── DynamoDB  ← user, jobs, sessions, checkpoints, memory
-            └── Bedrock   ← LLM calls (Claude Haiku 4.5) + Guardrails
-                    │
-                    └── LangSmith ← traces (async, via background thread)
+            ├── S3                  ← PDF storage
+            ├── DynamoDB            ← user, jobs, sessions, checkpoints, memory
+            ├── Bedrock             ← LLM calls (Claude Haiku 4.5) + Guardrails
+            │       └── LangSmith  ← traces (async, via background thread)
+            └── AgentCore Runtime   ← AnswerCoachAgent (invoke_agent_runtime)
 ```
 
 **Async invocation pattern:** `POST /sessions/{id}/run` returns the `session_id` immediately after triggering the background Lambda. The frontend polls `GET /sessions/{id}/status` via React Query `refetchInterval` until status is `completed` or `error`.
@@ -215,11 +218,15 @@ Voice input uses the browser-native **Web Speech API**:
 Works in Chrome and Edge. The React component degrades gracefully — falls back to a text input if the browser doesn't support `SpeechRecognition`.
 
 The back-and-forth coaching loop works as follows:
-1. UI reads the interview question aloud (SpeechSynthesis)
-2. User speaks their answer (SpeechRecognition → text)
-3. Text sent to `POST /sessions/{id}/resume` with the transcribed answer
-4. AnswerCoachAgent responds with a follow-up prompt or STAR coaching tip
-5. Loop continues until user clicks "Submit Final Answer"
+1. UI displays the interview question
+2. User types (or speaks via SpeechRecognition) their answer
+3. Text sent to `POST /sessions/{id}/coach` with `question_index` and `user_message`
+4. API Lambda invokes the AgentCore Runtime, passing the answer and (on first turn) the question
+5. AgentCore returns a coaching response and `is_complete` flag
+6. UI shows the response; user can refine their answer or move on
+7. Subsequent turns reuse the same `runtime_session_id` — AgentCore maintains conversation history in-session (microVM stays alive for the session lifetime)
+
+The `runtimeSessionId` is generated client-side on first turn and echoed back in every response, allowing the frontend to maintain the multi-turn session without storing state server-side.
 
 ---
 

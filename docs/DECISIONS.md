@@ -6,6 +6,32 @@ Use this as a reference when discussing the project in interviews.
 
 ---
 
+## ADR-019 — AnswerCoachAgent deployed as Amazon Bedrock AgentCore Runtime
+
+**Date:** 2026-05-05
+
+**Context:**
+AnswerCoachAgent is inherently multi-turn — the user submits an answer, the coach responds, the user refines, and so on until the answer is strong. This interactive back-and-forth doesn't fit the async batch model used for InterviewPrepAgent (Lambda + polling). We needed a hosting pattern designed for stateful, multi-turn agent conversations.
+
+**Options considered:**
+- **Lambda function (stateless)** — caller manages conversation history, passes full history each turn; simple but loses state guarantees and doesn't align with how AgentCore is meant to be used
+- **LangGraph node in runner Lambda** — fits the existing pipeline but runner is async batch, not interactive; would require polling for each coaching turn (poor UX)
+- **Amazon Bedrock AgentCore Runtime** — managed serverless hosting for AI agents; each `runtimeSessionId` is pinned to a dedicated microVM that stays alive across turns, keeping conversation history in-process
+
+**Decision:** AgentCore Runtime (Container build, ARM64, HTTP protocol)
+
+**Rationale:**
+- AgentCore is purpose-built for stateful multi-turn agents — session pinning to a microVM eliminates the need to serialize/deserialize conversation history on every turn
+- `runtimeSessionId` scopes each coaching conversation (one per question per session); history lives in-process, no DynamoDB reads per turn
+- UserMemory loaded once from DynamoDB on the first turn and cached in-process for the session — no repeated reads
+- AgentCore is a portfolio differentiator: demonstrates knowledge of AWS-native agent infrastructure beyond Lambda
+- Container build (ARM64 via CodeBuild) is the recommended production pattern; avoids native package compatibility issues
+- Clean separation: the runner Lambda handles batch graph execution (InterviewPrep), AgentCore handles interactive coaching — each tool does what it's good at
+
+**Build approach:** CodeBuild ARM64 build + ECR. CDK creates an S3 asset from `lambda/answer_coach/`, CodeBuild sources from it, builds the Docker image, and pushes to ECR. A custom resource Lambda triggers the CodeBuild build during `cdk deploy`.
+
+---
+
 ## ADR-018 — Three-entity data model: User / Job / Session
 
 **Date:** 2026-05-04

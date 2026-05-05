@@ -7,16 +7,21 @@ import sys
 import jsii
 from aws_cdk import (
     BundlingOptions,
+    CfnResource,
+    CustomResource,
     Duration,
     ILocalBundling,
     RemovalPolicy,
     Stack,
     aws_apigateway as apigw,
+    aws_codebuild as codebuild,
     aws_dynamodb as dynamodb,
+    aws_ecr as ecr,
     aws_iam as iam,
     aws_lambda as lambda_,
     aws_logs as logs,
     aws_s3 as s3,
+    aws_s3_assets as s3_assets,
 )
 from constructs import Construct
 
@@ -286,6 +291,220 @@ class JobCoachStack(Stack):
         memory_table.grant_read_write_data(api_fn)
         runner_fn.grant_invoke(api_fn)
 
+        # ── AgentCore AnswerCoach ────────────────────────────────────────────
+
+        # ECR — container image for AnswerCoach agent
+        answer_coach_repo = ecr.Repository(
+            self,
+            "AnswerCoachRepo",
+            repository_name=f"{prefix}-answer-coach",
+            removal_policy=removal,
+            empty_on_delete=is_dev,
+        )
+
+        # IAM — execution role that AgentCore assumes when running the agent
+        agentcore_exec_role = iam.Role(
+            self,
+            "AnswerCoachExecRole",
+            role_name=f"{prefix}-answer-coach-exec",
+            assumed_by=iam.ServicePrincipal(
+                "bedrock-agentcore.amazonaws.com",
+                conditions={
+                    "StringEquals": {"aws:SourceAccount": self.account},
+                    "ArnLike": {"aws:SourceArn": f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:*"},
+                },
+            ),
+        )
+        agentcore_exec_role.add_to_policy(iam.PolicyStatement(
+            actions=["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:BatchCheckLayerAvailability"],
+            resources=[answer_coach_repo.repository_arn],
+        ))
+        agentcore_exec_role.add_to_policy(iam.PolicyStatement(
+            actions=["ecr:GetAuthorizationToken"],
+            resources=["*"],
+        ))
+        agentcore_exec_role.add_to_policy(iam.PolicyStatement(
+            actions=["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogGroups", "logs:DescribeLogStreams"],
+            resources=["*"],
+        ))
+        agentcore_exec_role.add_to_policy(iam.PolicyStatement(
+            actions=["xray:PutTraceSegments", "xray:PutTelemetryRecords"],
+            resources=["*"],
+        ))
+        agentcore_exec_role.add_to_policy(iam.PolicyStatement(
+            actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+            resources=["*"],
+        ))
+        memory_table.grant_read_data(agentcore_exec_role)
+
+        # IAM — CodeBuild role for building the ARM64 image
+        codebuild_role = iam.Role(
+            self,
+            "AnswerCoachBuildRole",
+            assumed_by=iam.ServicePrincipal("codebuild.amazonaws.com"),
+        )
+        answer_coach_repo.grant_pull_push(codebuild_role)
+        codebuild_role.add_to_policy(iam.PolicyStatement(
+            actions=["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"],
+            resources=[f"arn:aws:logs:{self.region}:{self.account}:log-group:/aws/codebuild/*"],
+        ))
+        codebuild_role.add_to_policy(iam.PolicyStatement(
+            actions=["ecr:GetAuthorizationToken"],
+            resources=["*"],
+        ))
+
+        # S3 asset — uploads lambda/answer_coach/ as a zip for CodeBuild source
+        answer_coach_asset = s3_assets.Asset(
+            self,
+            "AnswerCoachAsset",
+            path=os.path.join(project_root, "lambda", "answer_coach"),
+        )
+        answer_coach_asset.grant_read(codebuild_role)
+
+        # CodeBuild — builds the ARM64 Docker image and pushes to ECR
+        image_tag = "latest"
+        answer_coach_build = codebuild.Project(
+            self,
+            "AnswerCoachBuild",
+            project_name=f"{prefix}-answer-coach-build",
+            role=codebuild_role,
+            environment=codebuild.BuildEnvironment(
+                build_image=codebuild.LinuxArmBuildImage.AMAZON_LINUX_2_STANDARD_3_0,
+                privileged=True,
+            ),
+            source=codebuild.Source.s3(
+                bucket=answer_coach_asset.bucket,
+                path=answer_coach_asset.s3_object_key,
+            ),
+            build_spec=codebuild.BuildSpec.from_object({
+                "version": "0.2",
+                "phases": {
+                    "pre_build": {"commands": [
+                        f"aws ecr get-login-password --region {self.region} | docker login --username AWS --password-stdin {self.account}.dkr.ecr.{self.region}.amazonaws.com",
+                    ]},
+                    "build": {"commands": [
+                        f"docker build --platform linux/arm64 -t answer-coach:{image_tag} .",
+                        f"docker tag answer-coach:{image_tag} {answer_coach_repo.repository_uri}:{image_tag}",
+                    ]},
+                    "post_build": {"commands": [
+                        f"docker push {answer_coach_repo.repository_uri}:{image_tag}",
+                    ]},
+                },
+            }),
+        )
+
+        # Lambda — custom resource that triggers the CodeBuild build during deploy
+        build_trigger_fn = lambda_.Function(
+            self,
+            "AnswerCoachBuildTrigger",
+            function_name=f"{prefix}-answer-coach-build-trigger",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="index.handler",
+            timeout=Duration.minutes(15),
+            code=lambda_.InlineCode("""
+import boto3
+import json
+import time
+import urllib.request
+
+def _cfn_send(event, context, status, data):
+    body = json.dumps({
+        "Status": status,
+        "Reason": f"See CloudWatch log stream: {context.log_stream_name}",
+        "PhysicalResourceId": context.log_stream_name,
+        "StackId": event["StackId"],
+        "RequestId": event["RequestId"],
+        "LogicalResourceId": event["LogicalResourceId"],
+        "Data": data,
+    }).encode()
+    req = urllib.request.Request(
+        event["ResponseURL"],
+        data=body,
+        headers={"Content-Type": "", "Content-Length": len(body)},
+        method="PUT",
+    )
+    urllib.request.urlopen(req)
+
+def handler(event, context):
+    try:
+        if event["RequestType"] == "Delete":
+            _cfn_send(event, context, "SUCCESS", {})
+            return
+        project = event["ResourceProperties"]["ProjectName"]
+        cb = boto3.client("codebuild")
+        build_id = cb.start_build(projectName=project)["build"]["id"]
+        deadline = context.get_remaining_time_in_millis() / 1000 - 30
+        start = time.time()
+        while True:
+            if time.time() - start > deadline:
+                _cfn_send(event, context, "FAILED", {"Error": "Timeout"})
+                return
+            status = cb.batch_get_builds(ids=[build_id])["builds"][0]["buildStatus"]
+            if status == "SUCCEEDED":
+                _cfn_send(event, context, "SUCCESS", {"BuildId": build_id})
+                return
+            if status in ("FAILED", "FAULT", "STOPPED", "TIMED_OUT"):
+                _cfn_send(event, context, "FAILED", {"Error": status})
+                return
+            time.sleep(30)
+    except Exception as e:
+        _cfn_send(event, context, "FAILED", {"Error": str(e)})
+"""),
+        )
+        build_trigger_fn.add_to_role_policy(iam.PolicyStatement(
+            actions=["codebuild:StartBuild", "codebuild:BatchGetBuilds"],
+            resources=[answer_coach_build.project_arn],
+        ))
+
+        build_trigger = CustomResource(
+            self,
+            "TriggerAnswerCoachBuild",
+            service_token=build_trigger_fn.function_arn,
+            properties={"ProjectName": answer_coach_build.project_name},
+        )
+        build_trigger.node.add_dependency(answer_coach_build)
+
+        # AgentCore Runtime (L1 — no higher-level CDK construct exists yet)
+        answer_coach_runtime = CfnResource(
+            self,
+            "AnswerCoachRuntime",
+            type="AWS::BedrockAgentCore::Runtime",
+            properties={
+                "AgentRuntimeName": f"{prefix.replace('-', '_')}_answer_coach",
+                "AgentRuntimeArtifact": {
+                    "ContainerConfiguration": {
+                        "ContainerUri": f"{answer_coach_repo.repository_uri}:{image_tag}",
+                    }
+                },
+                "RoleArn": agentcore_exec_role.role_arn,
+                "NetworkConfiguration": {"NetworkMode": "PUBLIC"},
+                "EnvironmentVariables": {
+                    "BEDROCK_MODEL_ID": shared_env["BEDROCK_MODEL_ID"],
+                    "DYNAMODB_MEMORY_TABLE": memory_table.table_name,
+                    "AWS_REGION": self.region,
+                },
+            },
+        )
+        answer_coach_runtime.node.add_dependency(build_trigger)
+
+        answer_coach_runtime_arn = answer_coach_runtime.get_att("AgentRuntimeArn").to_string()
+
+        # Grant API Lambda permission to invoke the AgentCore runtime.
+        # Resource must cover the endpoint ARN (runtime/<id>/runtime-endpoint/<name>),
+        # not just the runtime ARN, so we use a wildcard suffix.
+        api_fn.add_to_role_policy(iam.PolicyStatement(
+            actions=["bedrock-agentcore:InvokeAgentRuntime"],
+            resources=[
+                answer_coach_runtime_arn,
+                f"{answer_coach_runtime_arn}/*",
+            ],
+        ))
+
+        # Inject the runtime ARN into the API Lambda environment
+        api_fn.add_environment("ANSWER_COACH_RUNTIME_ARN", answer_coach_runtime_arn)
+
+        # ── API Gateway ──────────────────────────────────────────────────────
+
         # API Gateway
         api = apigw.RestApi(
             self,
@@ -326,3 +545,6 @@ class JobCoachStack(Stack):
 
         # /sessions/{session_id}/status
         session.add_resource("status").add_method("GET", integration)
+
+        # /sessions/{session_id}/coach
+        session.add_resource("coach").add_method("POST", integration)
