@@ -5,6 +5,7 @@ import JobList from './pages/JobList';
 import AddJob from './pages/AddJob';
 import JobDetail from './pages/JobDetail';
 import SessionDetail from './pages/SessionDetail';
+import AnswerCoach from './pages/AnswerCoach';
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
       <Route path="/jobs/new" element={<AddJob />} />
       <Route path="/jobs/:jobId" element={<JobDetail />} />
       <Route path="/sessions/:sessionId" element={<SessionDetail />} />
+      <Route path="/sessions/:sessionId/coach" element={<AnswerCoach />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

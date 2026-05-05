@@ -52,3 +52,16 @@ export interface SessionStatus {
   questions?: QuestionItem[];
   error?: string;
 }
+
+export interface CoachRequest {
+  question_index: number;
+  user_message: string;
+  runtime_session_id?: string;
+}
+
+export interface CoachResponse {
+  question_index: number;
+  coaching_response: string;
+  runtime_session_id: string;
+  is_complete: boolean;
+}

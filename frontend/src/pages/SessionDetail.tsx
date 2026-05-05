@@ -123,11 +123,21 @@ export default function SessionDetail() {
         )}
 
         {status?.status === 'completed' && status.questions && (
-          <div className="space-y-3">
-            {status.questions.map((q, i) => (
-              <QuestionCard key={i} index={i} item={q} />
-            ))}
-          </div>
+          <>
+            <div className="space-y-3">
+              {status.questions.map((q, i) => (
+                <QuestionCard key={i} index={i} item={q} />
+              ))}
+            </div>
+            <div className="mt-6 flex justify-center">
+              <button
+                onClick={() => navigate(`/sessions/${sessionId}/coach`)}
+                className="px-6 py-3 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 transition-colors"
+              >
+                Practice answers →
+              </button>
+            </div>
+          </>
         )}
       </div>
     </div>

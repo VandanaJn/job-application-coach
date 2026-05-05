@@ -1,5 +1,5 @@
 import request from './client';
-import type { Session, SessionListResponse, SessionStatus } from '../types';
+import type { Session, SessionListResponse, SessionStatus, CoachRequest, CoachResponse } from '../types';
 
 export const listSessions = (): Promise<SessionListResponse> =>
   request('/sessions');
@@ -15,3 +15,6 @@ export const runSession = (sessionId: string): Promise<Session> =>
 
 export const getSessionStatus = (sessionId: string): Promise<SessionStatus> =>
   request(`/sessions/${sessionId}/status`);
+
+export const coachAnswer = (sessionId: string, body: CoachRequest): Promise<CoachResponse> =>
+  request(`/sessions/${sessionId}/coach`, { method: 'POST', body: JSON.stringify(body) });
