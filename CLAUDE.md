@@ -31,7 +31,7 @@ GapAnalyzerAgent deferred — will add later as an optional pre-step before Inte
   Command for flow control, SqliteSaver for local dev / DynamoDB checkpointer for prod
 - **LangSmith** — tracing + evals enabled from day one
 - **langchain-aws 1.x** (`langchain-aws>=1.4`) — ChatBedrockConverse for all LLM calls
-- **AWS Bedrock** — Claude Haiku 4.5 (`anthropic.claude-haiku-4-5-20251001-v1:0`) via ChatBedrockConverse
+- **AWS Bedrock** — Claude Haiku 4.5 (`us.anthropic.claude-haiku-4-5-20251001-v1:0`) via ChatBedrockConverse
 - **Amazon Bedrock Guardrails** — content safety and prompt injection protection
 - **FastAPI** — REST API layer (Lambda handler)
 - **pypdf** — PDF text extraction
@@ -70,7 +70,7 @@ GapAnalyzerAgent deferred — will add later as an optional pre-step before Inte
 
 ## LangChain Patterns
 - ChatBedrockConverse from langchain-aws for all LLM calls
-- Default model: anthropic.claude-haiku-4-5-20251001-v1:0
+- Default model: us.anthropic.claude-haiku-4-5-20251001-v1:0
 - `create_agent(model, tools, system_prompt)` used consistently across all agents (InterviewPrep, AnswerCoach, Feedback, MemoryUpdate)
 - `with_structured_output()` for structured responses where needed
 - No LCEL pipe syntax (prompt | llm | parser)
@@ -176,7 +176,7 @@ job-application-coach/
 - LANGSMITH_PROJECT
 - AWS_REGION
 - AWS_ACCOUNT_ID
-- BEDROCK_MODEL_ID — default: anthropic.claude-haiku-4-5-20251001-v1:0
+- BEDROCK_MODEL_ID — default: us.anthropic.claude-haiku-4-5-20251001-v1:0
 - BEDROCK_GUARDRAIL_ID — Bedrock Guardrail ARN
 - DYNAMODB_TABLE_NAME — sessions table
 - DYNAMODB_USERS_TABLE — user profiles + resume text

@@ -21,6 +21,14 @@ from aws_cdk import (
 from constructs import Construct
 
 
+_LINUX_PIP_FLAGS = [
+    "--platform", "manylinux2014_x86_64",
+    "--python-version", "312",
+    "--implementation", "cp",
+    "--only-binary", ":all:",
+]
+
+
 @jsii.implements(ILocalBundling)
 class _ApiLocalBundler:
     """Bundles the API Lambda without Docker — works on Windows and any CI with Python."""
@@ -33,6 +41,7 @@ class _ApiLocalBundler:
             subprocess.check_call([
                 sys.executable, "-m", "pip", "install",
                 "-r", os.path.join(self._root, "lambda", "api", "requirements.txt"),
+                *_LINUX_PIP_FLAGS,
                 "-t", output_dir, "--quiet",
             ])
             for pkg in ("api", "models", "parsers"):
@@ -63,6 +72,7 @@ class _RunnerLocalBundler:
             subprocess.check_call([
                 sys.executable, "-m", "pip", "install",
                 "-r", os.path.join(self._root, "lambda", "runner", "requirements.txt"),
+                *_LINUX_PIP_FLAGS,
                 "-t", output_dir, "--quiet",
             ])
             for pkg in ("graph", "agents"):
@@ -194,7 +204,7 @@ class JobCoachStack(Stack):
             "DYNAMODB_CHECKPOINTS_TABLE": checkpoints_table.table_name,
             "DYNAMODB_MEMORY_TABLE": memory_table.table_name,
             "S3_BUCKET_NAME": pdf_bucket.bucket_name,
-            "BEDROCK_MODEL_ID": "anthropic.claude-haiku-4-5-20251001-v1:0",
+            "BEDROCK_MODEL_ID": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
             "BEDROCK_GUARDRAIL_ID": "",
         }
 

@@ -2,7 +2,7 @@ import os
 import sys
 from unittest.mock import patch, call
 
-from stacks.job_coach_stack import _ApiLocalBundler, _RunnerLocalBundler
+from stacks.job_coach_stack import _ApiLocalBundler, _RunnerLocalBundler, _LINUX_PIP_FLAGS
 
 
 def test_try_bundle_returns_true_on_success(tmp_path):
@@ -22,6 +22,8 @@ def test_try_bundle_installs_requirements(tmp_path):
     assert "install" in args
     assert os.path.join("/fake/root", "lambda", "api", "requirements.txt") in args
     assert str(tmp_path) in args
+    for flag in _LINUX_PIP_FLAGS:
+        assert flag in args
 
 
 def test_try_bundle_copies_api_models_parsers(tmp_path):
@@ -75,6 +77,8 @@ def test_runner_bundler_installs_runner_requirements(tmp_path):
     assert args[0] == sys.executable
     assert "install" in args
     assert os.path.join("/fake/root", "lambda", "runner", "requirements.txt") in args
+    for flag in _LINUX_PIP_FLAGS:
+        assert flag in args
 
 
 def test_runner_bundler_copies_graph_and_agents(tmp_path):

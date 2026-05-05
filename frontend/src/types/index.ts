@@ -40,3 +40,15 @@ export interface Session {
 export interface SessionListResponse {
   sessions: Session[];
 }
+
+export interface QuestionItem {
+  question: string;
+  category: string;
+}
+
+export interface SessionStatus {
+  session_id: string;
+  status: 'pending' | 'running' | 'completed' | 'error';
+  questions?: QuestionItem[];
+  error?: string;
+}

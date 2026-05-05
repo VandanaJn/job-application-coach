@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { listSessions, createSession } from '../api/sessions';
+import { listSessions, createSession, runSession, getSessionStatus } from '../api/sessions';
 
 export const useSessions = () =>
   useQuery({ queryKey: ['sessions'], queryFn: listSessions });
@@ -11,3 +11,16 @@ export const useCreateSession = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sessions'] }),
   });
 };
+
+export const useRunSession = () =>
+  useMutation({ mutationFn: (sessionId: string) => runSession(sessionId) });
+
+export const useSessionStatus = (sessionId: string) =>
+  useQuery({
+    queryKey: ['sessions', sessionId, 'status'],
+    queryFn: () => getSessionStatus(sessionId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === 'running' || status === 'pending' ? 2000 : false;
+    },
+  });

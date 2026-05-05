@@ -6,7 +6,7 @@ from typing import List
 
 from graph.state import InterviewQuestion
 
-BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "anthropic.claude-haiku-4-5-20251001-v1:0")
+BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-haiku-4-5-20251001-v1:0")
 
 SYSTEM_PROMPT = (
     "You are an expert interviewer helping candidates prepare for job interviews. "

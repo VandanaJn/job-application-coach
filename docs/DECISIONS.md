@@ -247,7 +247,7 @@ We need a capable model for nuanced tasks (gap analysis, answer evaluation) but 
 - **Meta Llama 3.3 70B** — strong open model, always available, good instruction following
 - **Claude Haiku 4.5 via Bedrock** — latest Haiku generation, significantly stronger than Haiku 3, fast, low cost, available in our account
 
-**Decision:** Claude Haiku 4.5 (`anthropic.claude-haiku-4-5-20251001-v1:0`)
+**Decision:** Claude Haiku 4.5 (`us.anthropic.claude-haiku-4-5-20251001-v1:0`)
 
 **Rationale:**
 - Haiku 4.5 is a major step up from Haiku 3 — handles nuanced reasoning required for gap analysis and STAR coaching well
