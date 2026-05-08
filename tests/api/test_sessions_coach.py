@@ -3,6 +3,8 @@ import uuid
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
+from botocore.exceptions import ClientError
+
 from tests.api.conftest import SESSIONS_TABLE, JOBS_TABLE, USERS_TABLE, USER_ID
 
 QUESTION = {"question": "Tell me about leading a project.", "category": "behavioral"}
@@ -180,3 +182,81 @@ def test_coach_returns_400_when_session_has_no_questions(client, aws_env):
             json={"question_index": 0, "user_message": "answer"},
         )
     assert response.status_code == 400
+
+
+def _agentcore_raising(error_code: str, message: str = "boom"):
+    mock_client = MagicMock()
+    mock_client.invoke_agent_runtime.side_effect = ClientError(
+        {"Error": {"Code": error_code, "Message": message}},
+        "InvokeAgentRuntime",
+    )
+    return mock_client
+
+
+def _agentcore_returning_body(body: bytes):
+    streaming_body = MagicMock()
+    streaming_body.read.return_value = body
+    mock_client = MagicMock()
+    mock_client.invoke_agent_runtime.return_value = {"response": streaming_body}
+    return mock_client
+
+
+def test_coach_returns_503_on_throttling(client, aws_env):
+    dynamodb, _ = aws_env
+    session_id = _seed_session_with_questions(dynamodb)
+
+    with patch(_AGENTCORE_PATCH, _agentcore_raising("ThrottlingException")):
+        response = client.post(
+            f"/sessions/{session_id}/coach",
+            json={"question_index": 0, "user_message": "I led a team."},
+        )
+    assert response.status_code == 503
+
+
+def test_coach_returns_400_on_validation_error(client, aws_env):
+    dynamodb, _ = aws_env
+    session_id = _seed_session_with_questions(dynamodb)
+
+    with patch(_AGENTCORE_PATCH, _agentcore_raising("ValidationException", "bad arn")):
+        response = client.post(
+            f"/sessions/{session_id}/coach",
+            json={"question_index": 0, "user_message": "I led a team."},
+        )
+    assert response.status_code == 400
+    assert "bad arn" in response.json()["detail"]
+
+
+def test_coach_returns_502_on_unknown_client_error(client, aws_env):
+    dynamodb, _ = aws_env
+    session_id = _seed_session_with_questions(dynamodb)
+
+    with patch(_AGENTCORE_PATCH, _agentcore_raising("InternalServerError")):
+        response = client.post(
+            f"/sessions/{session_id}/coach",
+            json={"question_index": 0, "user_message": "I led a team."},
+        )
+    assert response.status_code == 502
+
+
+def test_coach_returns_502_on_malformed_response_json(client, aws_env):
+    dynamodb, _ = aws_env
+    session_id = _seed_session_with_questions(dynamodb)
+
+    with patch(_AGENTCORE_PATCH, _agentcore_returning_body(b"not json")):
+        response = client.post(
+            f"/sessions/{session_id}/coach",
+            json={"question_index": 0, "user_message": "I led a team."},
+        )
+    assert response.status_code == 502
+
+
+def test_coach_returns_502_when_response_field_missing(client, aws_env):
+    dynamodb, _ = aws_env
+    session_id = _seed_session_with_questions(dynamodb)
+
+    with patch(_AGENTCORE_PATCH, _agentcore_returning_body(b'{"is_complete": false}')):
+        response = client.post(
+            f"/sessions/{session_id}/coach",
+            json={"question_index": 0, "user_message": "I led a team."},
+        )
+    assert response.status_code == 502

@@ -165,13 +165,34 @@ def coach_answer(
     if is_first_turn:
         payload["question"] = questions[body.question_index]["question"]
 
-    raw = _agentcore.invoke_agent_runtime(
-        agentRuntimeArn=config.answer_coach_runtime_arn,
-        qualifier="DEFAULT",
-        runtimeSessionId=runtime_session_id,
-        payload=json.dumps(payload).encode(),
-    )
-    agent_result = json.loads(raw["response"].read())
+    try:
+        raw = _agentcore.invoke_agent_runtime(
+            agentRuntimeArn=config.answer_coach_runtime_arn,
+            qualifier="DEFAULT",
+            runtimeSessionId=runtime_session_id,
+            payload=json.dumps(payload).encode(),
+        )
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code", "")
+        if code in ("ThrottlingException", "ServiceUnavailableException"):
+            raise HTTPException(
+                status_code=503,
+                detail="Coaching service is temporarily unavailable. Please try again in a moment.",
+            )
+        if code == "ValidationException":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid coaching request: {exc.response['Error'].get('Message', 'unknown')}",
+            )
+        raise HTTPException(status_code=502, detail=f"Coaching service error ({code or 'unknown'}).")
+
+    try:
+        agent_result = json.loads(raw["response"].read())
+    except (KeyError, ValueError):
+        raise HTTPException(status_code=502, detail="Coaching service returned an invalid response.")
+
+    if "response" not in agent_result:
+        raise HTTPException(status_code=502, detail="Coaching service response is missing the 'response' field.")
 
     return CoachResponse(
         question_index=body.question_index,
