@@ -47,6 +47,7 @@ function renderCoach() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
   mockUseSessionStatus.mockReturnValue({ data: makeStatus(), isLoading: false });
   mockUseCoachAnswer.mockReturnValue({ mutate: mockMutate, isPending: false });
 });
@@ -236,5 +237,61 @@ describe('AnswerCoach', () => {
 
     await user.click(screen.getByRole('button', { name: /questions/i }));
     expect(screen.getByText('Session Detail')).toBeInTheDocument();
+  });
+
+  it('persists conversation and runtime_session_id across remount', async () => {
+    const user = userEvent.setup();
+    mockMutate.mockImplementation((_body: unknown, { onSuccess }: { onSuccess: (d: unknown) => void }) => {
+      onSuccess({
+        question_index: 0,
+        coaching_response: 'Coach reply',
+        runtime_session_id: 'rs-persisted',
+        is_complete: false,
+      });
+    });
+
+    const { unmount } = renderCoach();
+    await user.type(screen.getByPlaceholderText(/type your answer/i), 'First answer{Enter}');
+    await waitFor(() => expect(mockMutate).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByText('Coach reply')).toBeInTheDocument());
+
+    unmount();
+    mockMutate.mockClear();
+
+    renderCoach();
+
+    // Prior chat survives the remount
+    expect(screen.getByText('First answer')).toBeInTheDocument();
+    expect(screen.getByText('Coach reply')).toBeInTheDocument();
+
+    // Next turn reuses the persisted runtime_session_id
+    await user.type(screen.getByPlaceholderText(/type your answer/i), 'Second answer{Enter}');
+    await waitFor(() => expect(mockMutate).toHaveBeenCalledTimes(1));
+    expect(mockMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ runtime_session_id: 'rs-persisted' }),
+      expect.any(Object)
+    );
+  });
+
+  it('persists is_complete across remount', async () => {
+    const user = userEvent.setup();
+    mockMutate.mockImplementation((_body: unknown, { onSuccess }: { onSuccess: (d: unknown) => void }) => {
+      onSuccess({
+        question_index: 0,
+        coaching_response: 'Excellent!',
+        runtime_session_id: 'rs-1',
+        is_complete: true,
+      });
+    });
+
+    const { unmount } = renderCoach();
+    await user.type(screen.getByPlaceholderText(/type your answer/i), 'Done{Enter}');
+    await waitFor(() => expect(screen.getByText(/strong answer/i)).toBeInTheDocument());
+
+    unmount();
+    renderCoach();
+
+    expect(screen.getByText(/strong answer/i)).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/type your answer/i)).not.toBeInTheDocument();
   });
 });

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useSessionStatus } from '../hooks/useSessions';
 import { useCoachAnswer } from '../hooks/useSessions';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 import type { QuestionItem } from '../types';
 
 interface Message {
@@ -126,15 +127,24 @@ export default function AnswerCoach() {
   const { mutate: sendAnswer, isPending } = useCoachAnswer(sessionId!);
 
   const [questionIndex, setQuestionIndex] = useState(0);
-  const [conversations, setConversations] = useState<Record<number, Message[]>>({});
-  const [runtimeSessionIds, setRuntimeSessionIds] = useState<Record<number, string>>({});
-  const [completedQuestions, setCompletedQuestions] = useState<Set<number>>(new Set());
+  const [conversations, setConversations] = useLocalStorage<Record<number, Message[]>>(
+    `coach:${sessionId}:conversations`,
+    {}
+  );
+  const [runtimeSessionIds, setRuntimeSessionIds] = useLocalStorage<Record<number, string>>(
+    `coach:${sessionId}:runtime_sessions`,
+    {}
+  );
+  const [completedQuestions, setCompletedQuestions] = useLocalStorage<Record<number, boolean>>(
+    `coach:${sessionId}:completed`,
+    {}
+  );
   const [inputText, setInputText] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const questions = status?.questions ?? [];
   const currentConversation = conversations[questionIndex] ?? [];
-  const isComplete = completedQuestions.has(questionIndex);
+  const isComplete = completedQuestions[questionIndex] === true;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -170,7 +180,7 @@ export default function AnswerCoach() {
             ],
           }));
           if (data.is_complete) {
-            setCompletedQuestions(prev => new Set(prev).add(questionIndex));
+            setCompletedQuestions(prev => ({ ...prev, [questionIndex]: true }));
           }
         },
         onError: (err) => {
