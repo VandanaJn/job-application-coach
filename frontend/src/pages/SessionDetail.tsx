@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSessionStatus, useRunSession } from '../hooks/useSessions';
@@ -37,12 +37,33 @@ function QuestionCard({ index, item }: { index: number; item: QuestionItem }) {
   );
 }
 
+const GENERATING_STEPS = [
+  'Reading your resume',
+  'Analysing the job description',
+  'Drafting tailored questions',
+];
+
 function GeneratingState() {
+  const [stepIndex, setStepIndex] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => {
+      setStepIndex((i) => (i + 1) % GENERATING_STEPS.length);
+    }, 6000);
+    return () => clearInterval(id);
+  }, []);
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
       <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-6" />
       <p className="text-lg font-semibold text-gray-900">Generating your interview questions</p>
-      <p className="text-gray-400 text-sm mt-2">Analysing your resume against the job description…</p>
+      <p
+        key={stepIndex}
+        className="text-gray-500 text-sm mt-2 transition-opacity duration-500"
+        aria-live="polite"
+      >
+        {GENERATING_STEPS[stepIndex]}…
+      </p>
+      <p className="text-gray-400 text-xs mt-4">This usually takes 20–40 seconds.</p>
     </div>
   );
 }

@@ -43,6 +43,28 @@ beforeEach(() => {
   mockUseRunSession.mockReturnValue({ mutate: vi.fn(), isPending: false });
 });
 
+describe('SessionDetail generating state', () => {
+  it('shows the time-estimate copy while pending', () => {
+    mockUseSessionStatus.mockReturnValue({
+      data: makeStatus({ status: 'pending', questions: undefined }),
+      isLoading: false,
+    });
+    renderDetail();
+    expect(screen.getByText(/20–40 seconds/)).toBeInTheDocument();
+  });
+
+  it('shows the cycling step indicator while running', () => {
+    mockUseSessionStatus.mockReturnValue({
+      data: makeStatus({ status: 'running', questions: undefined }),
+      isLoading: false,
+    });
+    renderDetail();
+    // First step renders immediately; rotation is timer-driven so we just
+    // assert the initial copy is present.
+    expect(screen.getByText(/reading your resume/i)).toBeInTheDocument();
+  });
+});
+
 describe('SessionDetail token usage badge', () => {
   it('shows formatted token total when usage is present', () => {
     mockUseSessionStatus.mockReturnValue({
