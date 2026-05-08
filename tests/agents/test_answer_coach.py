@@ -92,6 +92,17 @@ def test_create_agent_includes_summarization_middleware():
         assert any(isinstance(m, SummarizationMiddleware) for m in middleware)
 
 
+def test_create_agent_includes_bedrock_retry_middleware():
+    from langchain.agents.middleware import ModelRetryMiddleware
+    agent = _mock_agent()
+    p_model, p_create = _patch_factory(agent)
+    with p_model, p_create as mock_create:
+        build_answer_coach_agent()
+        kwargs = mock_create.call_args.kwargs
+        middleware = kwargs.get("middleware", [])
+        assert any(isinstance(m, ModelRetryMiddleware) for m in middleware)
+
+
 def test_run_forwards_all_messages():
     mock_agent = _mock_agent()
     p_model, p_create = _patch_factory(mock_agent)

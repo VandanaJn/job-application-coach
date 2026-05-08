@@ -6,6 +6,8 @@ from langchain_aws import ChatBedrockConverse
 from langchain_core.messages import BaseMessage
 from pydantic import BaseModel
 
+from agents.retry import bedrock_retry_middleware
+
 BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-haiku-4-5-20251001-v1:0")
 
 SYSTEM_PROMPT = (
@@ -37,6 +39,7 @@ def build_answer_coach_agent(user_memory: str = ""):
         system_prompt=system_prompt,
         response_format=ToolStrategy(CoachingResponse),
         middleware=[
+            bedrock_retry_middleware(),
             SummarizationMiddleware(
                 model=model,
                 trigger=("tokens", 8000),

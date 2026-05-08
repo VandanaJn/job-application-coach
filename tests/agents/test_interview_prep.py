@@ -168,6 +168,16 @@ def test_run_sums_usage_across_multiple_messages():
         assert result.output_tokens == 50
 
 
+def test_create_agent_includes_bedrock_retry_middleware():
+    from langchain.agents.middleware import ModelRetryMiddleware
+    p_model, p_create, _ = _patch_factory(_sample_questions(5))
+    with p_model, p_create as mock_create:
+        build_interview_prep_agent()
+        kwargs = mock_create.call_args.kwargs
+        middleware = kwargs.get("middleware", [])
+        assert any(isinstance(m, ModelRetryMiddleware) for m in middleware)
+
+
 def test_run_handles_missing_usage_metadata():
     agent = MagicMock()
     agent.invoke.return_value = {

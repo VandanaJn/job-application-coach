@@ -6,6 +6,7 @@ from langchain_aws import ChatBedrockConverse
 from pydantic import BaseModel
 from typing import List
 
+from agents.retry import bedrock_retry_middleware
 from graph.state import InterviewQuestion
 
 BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-haiku-4-5-20251001-v1:0")
@@ -53,6 +54,7 @@ def build_interview_prep_agent(num_questions: int = 5):
         tools=[],
         system_prompt=SYSTEM_PROMPT,
         response_format=ToolStrategy(InterviewQuestions),
+        middleware=[bedrock_retry_middleware()],
     )
 
     def run(resume_text: str, job_description: str) -> InterviewPrepResult:
