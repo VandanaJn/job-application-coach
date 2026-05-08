@@ -7,6 +7,7 @@ import sys
 import jsii
 from aws_cdk import (
     BundlingOptions,
+    CfnOutput,
     CfnResource,
     CustomResource,
     Duration,
@@ -585,3 +586,23 @@ def handler(event, context):
 
         # /sessions/{session_id}/coach
         session.add_resource("coach").add_method("POST", integration)
+
+        # ── Stack outputs ────────────────────────────────────────────────────
+        CfnOutput(
+            self,
+            "ApiUrl",
+            value=api.url,
+            description="API Gateway base URL — set as VITE_API_URL in frontend/.env.local",
+        )
+        CfnOutput(
+            self,
+            "AnswerCoachRuntimeArn",
+            value=answer_coach_runtime_arn,
+            description="AgentCore Runtime ARN for the AnswerCoach agent",
+        )
+        CfnOutput(
+            self,
+            "PdfBucketName",
+            value=pdf_bucket.bucket_name,
+            description="S3 bucket name for resume PDF uploads",
+        )

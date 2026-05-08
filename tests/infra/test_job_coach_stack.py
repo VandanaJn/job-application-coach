@@ -125,3 +125,16 @@ def test_api_gateway_name(template):
     template.has_resource_properties("AWS::ApiGateway::RestApi", {
         "Name": "job-coach-dev-api",
     })
+
+
+# CFN Outputs
+def test_stack_exports_api_url(template):
+    template.has_output("ApiUrl", {})
+
+
+def test_stack_exports_answer_coach_runtime_arn(template):
+    template.has_output("AnswerCoachRuntimeArn", {})
+
+
+def test_stack_exports_pdf_bucket_name(template):
+    template.has_output("PdfBucketName", {})
