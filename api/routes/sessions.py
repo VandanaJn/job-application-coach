@@ -1,6 +1,7 @@
 import json
 import uuid
 import boto3
+from botocore.exceptions import ClientError
 from datetime import datetime, timezone
 from boto3.dynamodb.conditions import Key
 from fastapi import APIRouter, HTTPException, Depends
@@ -104,12 +105,24 @@ def run_session(session_id: str, user_id: str = Depends(current_user_id)):
     job_result = _jobs_table().get_item(Key={"user_id": user_id, "job_id": session["job_id"]})
     job = job_result.get("Item", {})
 
-    _table().update_item(
-        Key={"user_id": user_id, "session_id": session_id},
-        UpdateExpression="SET #st = :status",
-        ExpressionAttributeNames={"#st": "status"},
-        ExpressionAttributeValues={":status": "running"},
-    )
+    # Conditional update: only flip pending → running. If the row is already
+    # running/completed/error, the second click is a no-op (avoids racing
+    # runner Lambdas on the same session).
+    try:
+        _table().update_item(
+            Key={"user_id": user_id, "session_id": session_id},
+            UpdateExpression="SET #st = :running",
+            ConditionExpression="#st = :pending",
+            ExpressionAttributeNames={"#st": "status"},
+            ExpressionAttributeValues={":running": "running", ":pending": "pending"},
+        )
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            raise HTTPException(
+                status_code=409,
+                detail=f"Session is not in 'pending' state (current: {session['status']}); cannot run.",
+            )
+        raise
 
     payload = {
         "session_id": session_id,

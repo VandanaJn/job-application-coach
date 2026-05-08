@@ -166,6 +166,24 @@ def test_run_session_returns_404_when_no_resume(client, aws_env):
     assert response.status_code == 400
 
 
+def test_run_session_returns_409_when_already_running(client, aws_env):
+    dynamodb, _ = aws_env
+    job_id = _seed_job(dynamodb)
+    _seed_user_with_resume(dynamodb)
+    session_id = _seed_session(dynamodb, job_id)
+
+    mock_lambda = MagicMock()
+    mock_lambda.invoke.return_value = {}
+    with patch("api.routes.sessions._lambda_client", return_value=mock_lambda):
+        first = client.post(f"/sessions/{session_id}/run")
+        second = client.post(f"/sessions/{session_id}/run")
+
+    assert first.status_code == 200
+    assert second.status_code == 409
+    # Lambda must only be invoked once — second click should NOT trigger a runner
+    mock_lambda.invoke.assert_called_once()
+
+
 def test_get_status_returns_running(client, aws_env):
     dynamodb, _ = aws_env
     job_id = _seed_job(dynamodb)
