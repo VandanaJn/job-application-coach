@@ -275,6 +275,87 @@ describe('AnswerCoach', () => {
     );
   });
 
+  it('renders one progress dot per question', () => {
+    renderCoach();
+    const dots = screen.getAllByLabelText(/^Go to question/);
+    expect(dots).toHaveLength(QUESTIONS.length);
+  });
+
+  it('marks the current dot with aria-current', () => {
+    renderCoach();
+    const currentDot = screen.getByLabelText(/Go to question 1/);
+    expect(currentDot).toHaveAttribute('aria-current', 'step');
+    const otherDot = screen.getByLabelText(/Go to question 2/);
+    expect(otherDot).not.toHaveAttribute('aria-current');
+  });
+
+  it('reflects completed status in the progress dot label', async () => {
+    const user = userEvent.setup();
+    mockMutate.mockImplementation((_body: unknown, { onSuccess }: { onSuccess: (d: unknown) => void }) => {
+      onSuccess({
+        question_index: 0,
+        coaching_response: 'Excellent!',
+        runtime_session_id: 'rs-1',
+        is_complete: true,
+      });
+    });
+    renderCoach();
+    await user.type(screen.getByPlaceholderText(/type your answer/i), 'Done{Enter}');
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Go to question 1.*completed/)).toBeInTheDocument();
+    });
+  });
+
+  it('lets the user jump questions by clicking a progress dot', async () => {
+    const user = userEvent.setup();
+    renderCoach();
+    expect(screen.getByText('Tell me about yourself')).toBeInTheDocument();
+    await user.click(screen.getByLabelText(/Go to question 2/));
+    expect(screen.getByText('Explain a technical challenge you solved')).toBeInTheDocument();
+  });
+
+  it('shows session-complete banner when last question completes', async () => {
+    const user = userEvent.setup();
+    // Pre-mark the first question complete via localStorage so we land on Q2
+    // and only need to drive Q2 to completion.
+    mockMutate.mockImplementation((_body: unknown, { onSuccess }: { onSuccess: (d: unknown) => void }) => {
+      onSuccess({
+        question_index: 1,
+        coaching_response: 'Excellent!',
+        runtime_session_id: 'rs-2',
+        is_complete: true,
+      });
+    });
+    renderCoach();
+    await user.click(screen.getByRole('button', { name: /next/i }));
+    await user.type(screen.getByPlaceholderText(/type your answer/i), 'Done{Enter}');
+
+    await waitFor(() => {
+      expect(screen.getByText(/all questions practiced/i)).toBeInTheDocument();
+    });
+    // Per-question banner should NOT appear for the final question
+    expect(screen.queryByText(/strong answer — well done/i)).not.toBeInTheDocument();
+  });
+
+  it('navigates to session detail from session-complete banner', async () => {
+    const user = userEvent.setup();
+    mockMutate.mockImplementation((_body: unknown, { onSuccess }: { onSuccess: (d: unknown) => void }) => {
+      onSuccess({
+        question_index: 1,
+        coaching_response: 'Excellent!',
+        runtime_session_id: 'rs-2',
+        is_complete: true,
+      });
+    });
+    renderCoach();
+    await user.click(screen.getByRole('button', { name: /next/i }));
+    await user.type(screen.getByPlaceholderText(/type your answer/i), 'Done{Enter}');
+    await waitFor(() => expect(screen.getByText(/all questions practiced/i)).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: /review questions/i }));
+    expect(screen.getByText('Session Detail')).toBeInTheDocument();
+  });
+
   it('persists is_complete across remount', async () => {
     const user = userEvent.setup();
     mockMutate.mockImplementation((_body: unknown, { onSuccess }: { onSuccess: (d: unknown) => void }) => {

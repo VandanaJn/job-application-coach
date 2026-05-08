@@ -135,6 +135,70 @@ function QuestionComplete({ onNext, isLast }: { onNext: () => void; isLast: bool
   );
 }
 
+function SessionComplete({ onReview }: { onReview: () => void }) {
+  return (
+    <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-5 py-6 text-center">
+      <p className="text-base font-semibold text-indigo-900">All questions practiced</p>
+      <p className="text-sm text-indigo-700 mt-1">
+        Nice work — you've got tailored feedback on every answer.
+      </p>
+      <button
+        onClick={onReview}
+        className="mt-4 px-5 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+      >
+        Review questions →
+      </button>
+    </div>
+  );
+}
+
+function ProgressDots({
+  total,
+  current,
+  completed,
+  conversations,
+  onJump,
+}: {
+  total: number;
+  current: number;
+  completed: Record<number, boolean>;
+  conversations: Record<number, Message[]>;
+  onJump: (index: number) => void;
+}) {
+  return (
+    <div
+      className="flex items-center justify-center gap-2.5 mt-3"
+      role="navigation"
+      aria-label="Question progress"
+    >
+      {Array.from({ length: total }, (_, i) => {
+        const isCompleted = completed[i] === true;
+        const isInProgress = !isCompleted && (conversations[i]?.length ?? 0) > 0;
+        const isCurrent = i === current;
+        const fill = isCompleted
+          ? 'bg-green-500'
+          : isInProgress
+            ? 'bg-indigo-500'
+            : 'bg-gray-200';
+        const ring = isCurrent ? 'ring-2 ring-offset-2 ring-indigo-300' : '';
+        const label = `Go to question ${i + 1}${
+          isCompleted ? ' (completed)' : isInProgress ? ' (in progress)' : ''
+        }`;
+        return (
+          <button
+            key={i}
+            type="button"
+            onClick={() => onJump(i)}
+            aria-label={label}
+            aria-current={isCurrent ? 'step' : undefined}
+            className={`w-2.5 h-2.5 rounded-full transition-all ${fill} ${ring}`}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 export default function AnswerCoach() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
@@ -266,6 +330,15 @@ export default function AnswerCoach() {
           onNext={() => setQuestionIndex(i => i + 1)}
         />
 
+        {/* Progress dots */}
+        <ProgressDots
+          total={questions.length}
+          current={questionIndex}
+          completed={completedQuestions}
+          conversations={conversations}
+          onJump={setQuestionIndex}
+        />
+
         {/* Conversation */}
         <div className="flex-1 flex flex-col mt-4 min-h-0">
           <div className="flex-1 overflow-y-auto space-y-3 pb-4">
@@ -294,10 +367,14 @@ export default function AnswerCoach() {
           {/* Complete banner */}
           {isComplete && (
             <div className="mb-3">
-              <QuestionComplete
-                onNext={() => setQuestionIndex(i => i + 1)}
-                isLast={questionIndex === questions.length - 1}
-              />
+              {questionIndex === questions.length - 1 ? (
+                <SessionComplete onReview={() => navigate(`/sessions/${sessionId}`)} />
+              ) : (
+                <QuestionComplete
+                  onNext={() => setQuestionIndex(i => i + 1)}
+                  isLast={false}
+                />
+              )}
             </div>
           )}
 
