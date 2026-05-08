@@ -11,10 +11,8 @@ from parsers.job import fetch_job_from_url
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
-
-def _table():
-    dynamodb = boto3.resource("dynamodb", region_name=config.aws_region)
-    return dynamodb.Table(config.dynamodb_jobs_table)
+_dynamodb = boto3.resource("dynamodb", region_name=config.aws_region)
+_jobs_table = _dynamodb.Table(config.dynamodb_jobs_table)
 
 
 @router.post("", response_model=JobResponse)
@@ -35,7 +33,7 @@ def create_job(body: JobCreate, user_id: str = Depends(current_user_id)):
     job_id = str(uuid.uuid4())
     created_at = datetime.now(timezone.utc).isoformat()
 
-    _table().put_item(Item={
+    _jobs_table.put_item(Item={
         "user_id": user_id,
         "job_id": job_id,
         "job_title": job_title or "",
@@ -55,7 +53,7 @@ def create_job(body: JobCreate, user_id: str = Depends(current_user_id)):
 
 @router.get("", response_model=JobListResponse)
 def list_jobs(user_id: str = Depends(current_user_id)):
-    result = _table().query(
+    result = _jobs_table.query(
         KeyConditionExpression=Key("user_id").eq(user_id)
     )
     jobs = [
@@ -73,7 +71,7 @@ def list_jobs(user_id: str = Depends(current_user_id)):
 
 @router.get("/{job_id}", response_model=JobResponse)
 def get_job(job_id: str, user_id: str = Depends(current_user_id)):
-    result = _table().get_item(Key={"user_id": user_id, "job_id": job_id})
+    result = _jobs_table.get_item(Key={"user_id": user_id, "job_id": job_id})
     if "Item" not in result:
         raise HTTPException(status_code=404, detail="Job not found")
     item = result["Item"]

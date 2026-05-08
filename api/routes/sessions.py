@@ -13,36 +13,27 @@ from models.coaching import CoachRequest, CoachResponse
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
-
-def _table():
-    dynamodb = boto3.resource("dynamodb", region_name=config.aws_region)
-    return dynamodb.Table(config.dynamodb_table_name)
-
-
-def _jobs_table():
-    dynamodb = boto3.resource("dynamodb", region_name=config.aws_region)
-    return dynamodb.Table(config.dynamodb_jobs_table)
-
-
-def _users_table():
-    dynamodb = boto3.resource("dynamodb", region_name=config.aws_region)
-    return dynamodb.Table(config.dynamodb_users_table)
-
-
-def _lambda_client():
-    return boto3.client("lambda", region_name=config.aws_region)
+# Boto resources/clients are created once per Lambda container and reused
+# across requests. boto3 connection pools are tied to the Client object,
+# so re-creating them per request defeats the warm-start benefit.
+_dynamodb = boto3.resource("dynamodb", region_name=config.aws_region)
+_sessions_table = _dynamodb.Table(config.dynamodb_table_name)
+_jobs_table = _dynamodb.Table(config.dynamodb_jobs_table)
+_users_table = _dynamodb.Table(config.dynamodb_users_table)
+_lambda = boto3.client("lambda", region_name=config.aws_region)
+_agentcore = boto3.client("bedrock-agentcore", region_name=config.aws_region)
 
 
 @router.post("", response_model=SessionResponse)
 def create_session(body: SessionCreate, user_id: str = Depends(current_user_id)):
-    result = _jobs_table().get_item(Key={"user_id": user_id, "job_id": body.job_id})
+    result = _jobs_table.get_item(Key={"user_id": user_id, "job_id": body.job_id})
     if "Item" not in result:
         raise HTTPException(status_code=404, detail="Job not found")
 
     session_id = str(uuid.uuid4())
     created_at = datetime.now(timezone.utc).isoformat()
 
-    _table().put_item(Item={
+    _sessions_table.put_item(Item={
         "user_id": user_id,
         "session_id": session_id,
         "job_id": body.job_id,
@@ -60,7 +51,7 @@ def create_session(body: SessionCreate, user_id: str = Depends(current_user_id))
 
 @router.get("", response_model=SessionListResponse)
 def list_sessions(user_id: str = Depends(current_user_id)):
-    result = _table().query(
+    result = _sessions_table.query(
         KeyConditionExpression=Key("user_id").eq(user_id)
     )
     sessions = [
@@ -77,7 +68,7 @@ def list_sessions(user_id: str = Depends(current_user_id)):
 
 @router.get("/{session_id}", response_model=SessionResponse)
 def get_session(session_id: str, user_id: str = Depends(current_user_id)):
-    result = _table().get_item(Key={"user_id": user_id, "session_id": session_id})
+    result = _sessions_table.get_item(Key={"user_id": user_id, "session_id": session_id})
     if "Item" not in result:
         raise HTTPException(status_code=404, detail="Session not found")
     item = result["Item"]
@@ -91,25 +82,25 @@ def get_session(session_id: str, user_id: str = Depends(current_user_id)):
 
 @router.post("/{session_id}/run", response_model=SessionResponse)
 def run_session(session_id: str, user_id: str = Depends(current_user_id)):
-    session_result = _table().get_item(Key={"user_id": user_id, "session_id": session_id})
+    session_result = _sessions_table.get_item(Key={"user_id": user_id, "session_id": session_id})
     if "Item" not in session_result:
         raise HTTPException(status_code=404, detail="Session not found")
     session = session_result["Item"]
 
-    user_result = _users_table().get_item(Key={"user_id": user_id})
+    user_result = _users_table.get_item(Key={"user_id": user_id})
     user = user_result.get("Item", {})
     resume_text = user.get("resume_text")
     if not resume_text:
         raise HTTPException(status_code=400, detail="No resume on file. Upload a resume first.")
 
-    job_result = _jobs_table().get_item(Key={"user_id": user_id, "job_id": session["job_id"]})
+    job_result = _jobs_table.get_item(Key={"user_id": user_id, "job_id": session["job_id"]})
     job = job_result.get("Item", {})
 
     # Conditional update: only flip pending → running. If the row is already
     # running/completed/error, the second click is a no-op (avoids racing
     # runner Lambdas on the same session).
     try:
-        _table().update_item(
+        _sessions_table.update_item(
             Key={"user_id": user_id, "session_id": session_id},
             UpdateExpression="SET #st = :running",
             ConditionExpression="#st = :pending",
@@ -135,7 +126,7 @@ def run_session(session_id: str, user_id: str = Depends(current_user_id)):
         "job_description": job.get("job_description", ""),
         "num_questions": 5,
     }
-    _lambda_client().invoke(
+    _lambda.invoke(
         FunctionName=config.runner_function_name,
         InvocationType="Event",
         Payload=json.dumps(payload),
@@ -149,17 +140,13 @@ def run_session(session_id: str, user_id: str = Depends(current_user_id)):
     )
 
 
-def _agentcore_client():
-    return boto3.client("bedrock-agentcore", region_name=config.aws_region)
-
-
 @router.post("/{session_id}/coach", response_model=CoachResponse)
 def coach_answer(
     session_id: str,
     body: CoachRequest,
     user_id: str = Depends(current_user_id),
 ):
-    result = _table().get_item(Key={"user_id": user_id, "session_id": session_id})
+    result = _sessions_table.get_item(Key={"user_id": user_id, "session_id": session_id})
     if "Item" not in result:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -178,8 +165,7 @@ def coach_answer(
     if is_first_turn:
         payload["question"] = questions[body.question_index]["question"]
 
-    agentcore = _agentcore_client()
-    raw = agentcore.invoke_agent_runtime(
+    raw = _agentcore.invoke_agent_runtime(
         agentRuntimeArn=config.answer_coach_runtime_arn,
         qualifier="DEFAULT",
         runtimeSessionId=runtime_session_id,
@@ -197,7 +183,7 @@ def coach_answer(
 
 @router.get("/{session_id}/status", response_model=SessionStatusResponse)
 def get_session_status(session_id: str, user_id: str = Depends(current_user_id)):
-    result = _table().get_item(Key={"user_id": user_id, "session_id": session_id})
+    result = _sessions_table.get_item(Key={"user_id": user_id, "session_id": session_id})
     if "Item" not in result:
         raise HTTPException(status_code=404, detail="Session not found")
     item = result["Item"]

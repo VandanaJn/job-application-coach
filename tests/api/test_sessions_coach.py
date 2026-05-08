@@ -37,11 +37,14 @@ def _agentcore_response(text: str = "Can you add the outcome?", is_complete: boo
     return mock_client
 
 
+_AGENTCORE_PATCH = "api.routes.sessions._agentcore"
+
+
 def test_coach_returns_200_on_first_turn(client, aws_env):
     dynamodb, _ = aws_env
     session_id = _seed_session_with_questions(dynamodb)
 
-    with patch("api.routes.sessions.boto3.client", return_value=_agentcore_response()):
+    with patch(_AGENTCORE_PATCH, _agentcore_response()):
         with patch.dict("os.environ", {"ANSWER_COACH_RUNTIME_ARN": "arn:aws:bedrock-agentcore:us-east-1:123:runtime/abc"}):
             response = client.post(
                 f"/sessions/{session_id}/coach",
@@ -54,7 +57,7 @@ def test_coach_returns_coaching_response(client, aws_env):
     dynamodb, _ = aws_env
     session_id = _seed_session_with_questions(dynamodb)
 
-    with patch("api.routes.sessions.boto3.client", return_value=_agentcore_response("Great start! What was the outcome?")):
+    with patch(_AGENTCORE_PATCH, _agentcore_response("Great start! What was the outcome?")):
         with patch.dict("os.environ", {"ANSWER_COACH_RUNTIME_ARN": "arn:aws:bedrock-agentcore:us-east-1:123:runtime/abc"}):
             data = client.post(
                 f"/sessions/{session_id}/coach",
@@ -70,7 +73,7 @@ def test_coach_generates_runtime_session_id_on_first_turn(client, aws_env):
     dynamodb, _ = aws_env
     session_id = _seed_session_with_questions(dynamodb)
 
-    with patch("api.routes.sessions.boto3.client", return_value=_agentcore_response()):
+    with patch(_AGENTCORE_PATCH, _agentcore_response()):
         with patch.dict("os.environ", {"ANSWER_COACH_RUNTIME_ARN": "arn:aws:bedrock-agentcore:us-east-1:123:runtime/abc"}):
             data = client.post(
                 f"/sessions/{session_id}/coach",
@@ -86,7 +89,7 @@ def test_coach_reuses_runtime_session_id_on_subsequent_turns(client, aws_env):
     session_id = _seed_session_with_questions(dynamodb)
     existing_session_id = "existing-runtime-session-abc"
 
-    with patch("api.routes.sessions.boto3.client", return_value=_agentcore_response()):
+    with patch(_AGENTCORE_PATCH, _agentcore_response()):
         with patch.dict("os.environ", {"ANSWER_COACH_RUNTIME_ARN": "arn:aws:bedrock-agentcore:us-east-1:123:runtime/abc"}):
             data = client.post(
                 f"/sessions/{session_id}/coach",
@@ -105,7 +108,7 @@ def test_coach_passes_question_on_first_turn(client, aws_env):
     session_id = _seed_session_with_questions(dynamodb)
     mock_client = _agentcore_response()
 
-    with patch("api.routes.sessions.boto3.client", return_value=mock_client):
+    with patch(_AGENTCORE_PATCH, mock_client):
         with patch.dict("os.environ", {"ANSWER_COACH_RUNTIME_ARN": "arn:aws:bedrock-agentcore:us-east-1:123:runtime/abc"}):
             client.post(
                 f"/sessions/{session_id}/coach",
@@ -122,7 +125,7 @@ def test_coach_omits_question_on_subsequent_turns(client, aws_env):
     session_id = _seed_session_with_questions(dynamodb)
     mock_client = _agentcore_response()
 
-    with patch("api.routes.sessions.boto3.client", return_value=mock_client):
+    with patch(_AGENTCORE_PATCH, mock_client):
         with patch.dict("os.environ", {"ANSWER_COACH_RUNTIME_ARN": "arn:aws:bedrock-agentcore:us-east-1:123:runtime/abc"}):
             client.post(
                 f"/sessions/{session_id}/coach",
@@ -151,7 +154,7 @@ def test_coach_returns_400_for_invalid_question_index(client, aws_env):
     dynamodb, _ = aws_env
     session_id = _seed_session_with_questions(dynamodb)
 
-    with patch("api.routes.sessions.boto3.client", return_value=_agentcore_response()):
+    with patch(_AGENTCORE_PATCH, _agentcore_response()):
         with patch.dict("os.environ", {"ANSWER_COACH_RUNTIME_ARN": "arn:aws:bedrock-agentcore:us-east-1:123:runtime/abc"}):
             response = client.post(
                 f"/sessions/{session_id}/coach",

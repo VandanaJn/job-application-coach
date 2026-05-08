@@ -108,7 +108,7 @@ def test_run_session_returns_200(client, aws_env):
 
     mock_lambda = MagicMock()
     mock_lambda.invoke.return_value = {}
-    with patch("api.routes.sessions._lambda_client", return_value=mock_lambda):
+    with patch("api.routes.sessions._lambda", mock_lambda):
         response = client.post(f"/sessions/{session_id}/run")
 
     assert response.status_code == 200
@@ -123,7 +123,7 @@ def test_run_session_invokes_runner_lambda(client, aws_env):
 
     mock_lambda = MagicMock()
     mock_lambda.invoke.return_value = {}
-    with patch("api.routes.sessions._lambda_client", return_value=mock_lambda):
+    with patch("api.routes.sessions._lambda", mock_lambda):
         client.post(f"/sessions/{session_id}/run")
 
     mock_lambda.invoke.assert_called_once()
@@ -143,7 +143,7 @@ def test_run_session_updates_status_to_running(client, aws_env):
 
     mock_lambda = MagicMock()
     mock_lambda.invoke.return_value = {}
-    with patch("api.routes.sessions._lambda_client", return_value=mock_lambda):
+    with patch("api.routes.sessions._lambda", mock_lambda):
         client.post(f"/sessions/{session_id}/run")
 
     item = dynamodb.Table(SESSIONS_TABLE).get_item(
@@ -174,7 +174,7 @@ def test_run_session_returns_409_when_already_running(client, aws_env):
 
     mock_lambda = MagicMock()
     mock_lambda.invoke.return_value = {}
-    with patch("api.routes.sessions._lambda_client", return_value=mock_lambda):
+    with patch("api.routes.sessions._lambda", mock_lambda):
         first = client.post(f"/sessions/{session_id}/run")
         second = client.post(f"/sessions/{session_id}/run")
 

@@ -9,19 +9,14 @@ from parsers.pdf import extract_text
 
 router = APIRouter(prefix="/user", tags=["user"])
 
-
-def _table():
-    dynamodb = boto3.resource("dynamodb", region_name=config.aws_region)
-    return dynamodb.Table(config.dynamodb_users_table)
-
-
-def _s3():
-    return boto3.client("s3", region_name=config.aws_region)
+_dynamodb = boto3.resource("dynamodb", region_name=config.aws_region)
+_users_table = _dynamodb.Table(config.dynamodb_users_table)
+_s3 = boto3.client("s3", region_name=config.aws_region)
 
 
 @router.get("", response_model=UserProfileResponse)
 def get_user(user_id: str = Depends(current_user_id)):
-    result = _table().get_item(Key={"user_id": user_id})
+    result = _users_table.get_item(Key={"user_id": user_id})
     item = result.get("Item")
     if not item:
         return UserProfileResponse(user_id=user_id, has_resume=False)
@@ -47,10 +42,10 @@ def upload_resume(
         raise HTTPException(status_code=400, detail=str(e))
 
     s3_key = f"{user_id}/resume.pdf"
-    _s3().put_object(Bucket=config.s3_bucket_name, Key=s3_key, Body=pdf_bytes)
+    _s3.put_object(Bucket=config.s3_bucket_name, Key=s3_key, Body=pdf_bytes)
 
     uploaded_at = datetime.now(timezone.utc).isoformat()
-    _table().put_item(Item={
+    _users_table.put_item(Item={
         "user_id": user_id,
         "resume_text": text,
         "s3_pdf_key": s3_key,
