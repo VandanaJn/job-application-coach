@@ -219,3 +219,38 @@ def test_get_status_returns_questions_when_completed(client, aws_env):
 def test_get_status_returns_404_for_unknown(client):
     response = client.get("/sessions/nonexistent/status")
     assert response.status_code == 404
+
+
+def test_get_status_returns_usage_when_present(client, aws_env):
+    dynamodb, _ = aws_env
+    job_id = _seed_job(dynamodb)
+    session_id = _seed_session(dynamodb, job_id)
+    dynamodb.Table(SESSIONS_TABLE).update_item(
+        Key={"user_id": USER_ID, "session_id": session_id},
+        UpdateExpression=(
+            "SET #st = :s, usage_input_tokens = :uin, "
+            "usage_output_tokens = :uout, usage_total_tokens = :utotal"
+        ),
+        ExpressionAttributeNames={"#st": "status"},
+        ExpressionAttributeValues={
+            ":s": "completed",
+            ":uin": 120,
+            ":uout": 80,
+            ":utotal": 200,
+        },
+    )
+
+    response = client.get(f"/sessions/{session_id}/status")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["usage"] == {"input_tokens": 120, "output_tokens": 80, "total_tokens": 200}
+
+
+def test_get_status_omits_usage_when_missing(client, aws_env):
+    dynamodb, _ = aws_env
+    job_id = _seed_job(dynamodb)
+    session_id = _seed_session(dynamodb, job_id)
+
+    response = client.get(f"/sessions/{session_id}/status")
+    assert response.status_code == 200
+    assert response.json().get("usage") is None

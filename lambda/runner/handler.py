@@ -14,7 +14,7 @@ def _table():
     return dynamodb.Table(SESSIONS_TABLE)
 
 
-def _write_result(session_id: str, user_id: str, status: str, questions=None, error=None):
+def _write_result(session_id: str, user_id: str, status: str, questions=None, error=None, usage=None):
     update_expr = "SET #st = :status"
     expr_names = {"#st": "status"}
     expr_values = {":status": status}
@@ -27,6 +27,12 @@ def _write_result(session_id: str, user_id: str, status: str, questions=None, er
         update_expr += ", #err = :error"
         expr_names["#err"] = "error"
         expr_values[":error"] = error
+
+    if usage is not None:
+        update_expr += ", usage_input_tokens = :uin, usage_output_tokens = :uout, usage_total_tokens = :utotal"
+        expr_values[":uin"] = usage["input_tokens"]
+        expr_values[":uout"] = usage["output_tokens"]
+        expr_values[":utotal"] = usage["input_tokens"] + usage["output_tokens"]
 
     _table().update_item(
         Key={"user_id": user_id, "session_id": session_id},
@@ -58,7 +64,19 @@ def handler(event, context):
         if result.get("status") == SessionStatus.ERROR.value:
             _write_result(session_id, user_id, SessionStatus.ERROR.value, error=result.get("error", "Unknown error"))
         else:
-            _write_result(session_id, user_id, SessionStatus.COMPLETED.value, questions=result["questions"])
+            usage = None
+            if "input_tokens" in result and "output_tokens" in result:
+                usage = {
+                    "input_tokens": result["input_tokens"] or 0,
+                    "output_tokens": result["output_tokens"] or 0,
+                }
+            _write_result(
+                session_id,
+                user_id,
+                SessionStatus.COMPLETED.value,
+                questions=result["questions"],
+                usage=usage,
+            )
 
     except Exception as exc:
         _write_result(session_id, user_id, SessionStatus.ERROR.value, error=str(exc))

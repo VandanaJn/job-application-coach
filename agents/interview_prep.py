@@ -1,4 +1,5 @@
 import os
+from dataclasses import dataclass
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
 from langchain_aws import ChatBedrockConverse
@@ -22,6 +23,28 @@ class InterviewQuestions(BaseModel):
     questions: List[InterviewQuestion]
 
 
+@dataclass
+class InterviewPrepResult:
+    questions: List[InterviewQuestion]
+    input_tokens: int
+    output_tokens: int
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
+
+
+def _sum_usage(messages: list) -> tuple[int, int]:
+    """Sum input/output tokens across all AIMessages in an agent run."""
+    total_in = 0
+    total_out = 0
+    for m in messages or []:
+        meta = getattr(m, "usage_metadata", None) or {}
+        total_in += meta.get("input_tokens", 0) or 0
+        total_out += meta.get("output_tokens", 0) or 0
+    return total_in, total_out
+
+
 def build_interview_prep_agent(num_questions: int = 5):
     """Convenience factory used by the LangGraph node."""
     model = ChatBedrockConverse(model=BEDROCK_MODEL_ID)
@@ -32,7 +55,7 @@ def build_interview_prep_agent(num_questions: int = 5):
         response_format=ToolStrategy(InterviewQuestions),
     )
 
-    def run(resume_text: str, job_description: str) -> InterviewQuestions:
+    def run(resume_text: str, job_description: str) -> InterviewPrepResult:
         prompt = (
             f"Generate exactly {num_questions} interview questions for this candidate.\n\n"
             f"RESUME:\n{resume_text}\n\n"
@@ -41,6 +64,12 @@ def build_interview_prep_agent(num_questions: int = 5):
             f"and situational categories as appropriate."
         )
         result = agent.invoke({"messages": [{"role": "user", "content": prompt}]})
-        return result["structured_response"]
+        structured: InterviewQuestions = result["structured_response"]
+        input_tokens, output_tokens = _sum_usage(result.get("messages", []))
+        return InterviewPrepResult(
+            questions=structured.questions,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
 
     return run

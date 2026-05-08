@@ -10,6 +10,12 @@ class SessionStatus(str, Enum):
     ERROR = "error"
 
 
+class TokenUsage(BaseModel):
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+
+
 class SessionCreate(BaseModel):
     job_id: str
 
@@ -35,3 +41,4 @@ class SessionStatusResponse(BaseModel):
     status: SessionStatus
     questions: Optional[List[QuestionItem]] = None
     error: Optional[str] = None
+    usage: Optional[TokenUsage] = None

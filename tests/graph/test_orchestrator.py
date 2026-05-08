@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 from graph.state import InterviewQuestion
-from agents.interview_prep import InterviewQuestions
+from agents.interview_prep import InterviewPrepResult
 
 INITIAL_STATE = {
     "session_id": "sess-1",
@@ -14,13 +14,16 @@ INITIAL_STATE = {
     "error": None,
 }
 
-MOCK_QUESTIONS = InterviewQuestions(questions=[
-    InterviewQuestion(question=f"Q{i}?", category="technical") for i in range(3)
-])
+MOCK_QUESTIONS = [InterviewQuestion(question=f"Q{i}?", category="technical") for i in range(3)]
 
 
-def _mock_agent_builder(questions=MOCK_QUESTIONS):
-    mock_agent = MagicMock(return_value=questions)
+def _mock_agent_builder(questions=MOCK_QUESTIONS, input_tokens=100, output_tokens=50):
+    result = InterviewPrepResult(
+        questions=questions,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+    )
+    mock_agent = MagicMock(return_value=result)
     return MagicMock(return_value=mock_agent)
 
 
@@ -35,7 +38,15 @@ def test_graph_returns_questions():
     with patch("graph.orchestrator.build_interview_prep_agent", _mock_agent_builder()):
         from graph.orchestrator import build_graph
         result = build_graph().invoke(INITIAL_STATE)
-    assert result["questions"] == MOCK_QUESTIONS.questions
+    assert result["questions"] == MOCK_QUESTIONS
+
+
+def test_graph_returns_token_usage():
+    with patch("graph.orchestrator.build_interview_prep_agent", _mock_agent_builder(input_tokens=120, output_tokens=80)):
+        from graph.orchestrator import build_graph
+        result = build_graph().invoke(INITIAL_STATE)
+    assert result["input_tokens"] == 120
+    assert result["output_tokens"] == 80
 
 
 def test_graph_passes_num_questions_to_agent():

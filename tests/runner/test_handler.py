@@ -36,12 +36,14 @@ def _load_handler():
     return mod
 
 
-def _mock_graph(questions=SAMPLE_QUESTIONS):
+def _mock_graph(questions=SAMPLE_QUESTIONS, input_tokens=100, output_tokens=50):
     mock_compiled = MagicMock()
     mock_compiled.invoke.return_value = {
         "questions": questions,
         "status": "completed",
         "error": None,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
     }
     return MagicMock(return_value=mock_compiled)
 
@@ -143,6 +145,34 @@ def test_handler_writes_error_status_on_graph_failure(aws_env):
     item = table.get_item(Key={"user_id": USER_ID, "session_id": SESSION_ID})["Item"]
     assert item["status"] == "error"
     assert "Bedrock timeout" in item["error"]
+
+
+def test_handler_writes_token_usage_to_dynamo(aws_env):
+    mod = _load_handler()
+    with patch.object(mod, "build_graph", _mock_graph(input_tokens=120, output_tokens=80)):
+        mod.handler(SAMPLE_EVENT, {})
+
+    table = aws_env.Table(SESSIONS_TABLE)
+    item = table.get_item(Key={"user_id": USER_ID, "session_id": SESSION_ID})["Item"]
+    assert int(item["usage_input_tokens"]) == 120
+    assert int(item["usage_output_tokens"]) == 80
+    assert int(item["usage_total_tokens"]) == 200
+
+
+def test_handler_skips_usage_when_missing_from_state(aws_env):
+    mod = _load_handler()
+    mock_compiled = MagicMock()
+    mock_compiled.invoke.return_value = {
+        "questions": SAMPLE_QUESTIONS,
+        "status": "completed",
+        "error": None,
+    }
+    with patch.object(mod, "build_graph", MagicMock(return_value=mock_compiled)):
+        mod.handler(SAMPLE_EVENT, {})
+
+    table = aws_env.Table(SESSIONS_TABLE)
+    item = table.get_item(Key={"user_id": USER_ID, "session_id": SESSION_ID})["Item"]
+    assert "usage_total_tokens" not in item
 
 
 def test_handler_writes_error_when_graph_returns_error_state(aws_env):

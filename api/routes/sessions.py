@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Depends
 
 from api.config import config
 from api.dependencies import current_user_id
-from models.session import SessionCreate, SessionResponse, SessionListResponse, SessionStatus, SessionStatusResponse, QuestionItem
+from models.session import SessionCreate, SessionResponse, SessionListResponse, SessionStatus, SessionStatusResponse, QuestionItem, TokenUsage
 from models.coaching import CoachRequest, CoachResponse
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -213,9 +213,18 @@ def get_session_status(session_id: str, user_id: str = Depends(current_user_id))
     if item.get("questions"):
         questions = [QuestionItem(**q) for q in item["questions"]]
 
+    usage = None
+    if "usage_total_tokens" in item:
+        usage = TokenUsage(
+            input_tokens=int(item.get("usage_input_tokens", 0)),
+            output_tokens=int(item.get("usage_output_tokens", 0)),
+            total_tokens=int(item["usage_total_tokens"]),
+        )
+
     return SessionStatusResponse(
         session_id=session_id,
         status=item["status"],
         questions=questions,
         error=item.get("error"),
+        usage=usage,
     )

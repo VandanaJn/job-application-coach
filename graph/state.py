@@ -19,3 +19,5 @@ class GraphState(TypedDict):
     coaching_sessions: Optional[dict[str, str]]
     status: str
     error: Optional[str]
+    input_tokens: Optional[int]
+    output_tokens: Optional[int]

@@ -8,7 +8,12 @@ def interview_prep_node(state: GraphState) -> dict:
     try:
         agent = build_interview_prep_agent(state["num_questions"])
         result = agent(state["resume_text"], state["job_description"])
-        return {"questions": result.questions, "status": SessionStatus.COMPLETED.value}
+        return {
+            "questions": result.questions,
+            "status": SessionStatus.COMPLETED.value,
+            "input_tokens": result.input_tokens,
+            "output_tokens": result.output_tokens,
+        }
     except Exception as exc:
         return {"status": SessionStatus.ERROR.value, "error": str(exc)}
 
