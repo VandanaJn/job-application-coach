@@ -105,9 +105,19 @@ export default function SessionDetail() {
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Interview questions</h1>
           {status?.status === 'completed' && (
-            <span className="text-xs px-3 py-1 rounded-full bg-green-100 text-green-700 font-medium">
-              {status.questions?.length ?? 0} questions
-            </span>
+            <div className="flex items-center gap-2">
+              {status.usage && (
+                <span
+                  className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-600 font-medium"
+                  title={`Input: ${status.usage.input_tokens} · Output: ${status.usage.output_tokens}`}
+                >
+                  {status.usage.total_tokens.toLocaleString()} tokens
+                </span>
+              )}
+              <span className="text-xs px-3 py-1 rounded-full bg-green-100 text-green-700 font-medium">
+                {status.questions?.length ?? 0} questions
+              </span>
+            </div>
           )}
         </div>
 
