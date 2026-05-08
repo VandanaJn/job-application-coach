@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Depends
 
 from api.config import config
 from api.dependencies import current_user_id
-from models.session import SessionCreate, SessionResponse, SessionListResponse, SessionStatusResponse, QuestionItem
+from models.session import SessionCreate, SessionResponse, SessionListResponse, SessionStatus, SessionStatusResponse, QuestionItem
 from models.coaching import CoachRequest, CoachResponse
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -46,14 +46,14 @@ def create_session(body: SessionCreate, user_id: str = Depends(current_user_id))
         "user_id": user_id,
         "session_id": session_id,
         "job_id": body.job_id,
-        "status": "pending",
+        "status": SessionStatus.PENDING.value,
         "created_at": created_at,
     })
 
     return SessionResponse(
         session_id=session_id,
         job_id=body.job_id,
-        status="pending",
+        status=SessionStatus.PENDING,
         created_at=created_at,
     )
 
@@ -114,7 +114,10 @@ def run_session(session_id: str, user_id: str = Depends(current_user_id)):
             UpdateExpression="SET #st = :running",
             ConditionExpression="#st = :pending",
             ExpressionAttributeNames={"#st": "status"},
-            ExpressionAttributeValues={":running": "running", ":pending": "pending"},
+            ExpressionAttributeValues={
+                ":running": SessionStatus.RUNNING.value,
+                ":pending": SessionStatus.PENDING.value,
+            },
         )
     except ClientError as exc:
         if exc.response["Error"]["Code"] == "ConditionalCheckFailedException":
@@ -141,7 +144,7 @@ def run_session(session_id: str, user_id: str = Depends(current_user_id)):
     return SessionResponse(
         session_id=session_id,
         job_id=session["job_id"],
-        status="running",
+        status=SessionStatus.RUNNING,
         created_at=session["created_at"],
     )
 

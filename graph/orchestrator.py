@@ -1,15 +1,16 @@
 from langgraph.graph import StateGraph, END
 from graph.state import GraphState
 from agents.interview_prep import build_interview_prep_agent
+from models.session import SessionStatus
 
 
 def interview_prep_node(state: GraphState) -> dict:
     try:
         agent = build_interview_prep_agent(state["num_questions"])
         result = agent(state["resume_text"], state["job_description"])
-        return {"questions": result.questions, "status": "completed"}
+        return {"questions": result.questions, "status": SessionStatus.COMPLETED.value}
     except Exception as exc:
-        return {"status": "error", "error": str(exc)}
+        return {"status": SessionStatus.ERROR.value, "error": str(exc)}
 
 
 def build_graph():

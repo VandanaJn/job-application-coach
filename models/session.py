@@ -1,5 +1,13 @@
+from enum import Enum
 from pydantic import BaseModel
 from typing import List, Optional
+
+
+class SessionStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    ERROR = "error"
 
 
 class SessionCreate(BaseModel):
@@ -9,7 +17,7 @@ class SessionCreate(BaseModel):
 class SessionResponse(BaseModel):
     session_id: str
     job_id: str
-    status: str
+    status: SessionStatus
     created_at: str
 
 
@@ -24,6 +32,6 @@ class QuestionItem(BaseModel):
 
 class SessionStatusResponse(BaseModel):
     session_id: str
-    status: str
+    status: SessionStatus
     questions: Optional[List[QuestionItem]] = None
     error: Optional[str] = None

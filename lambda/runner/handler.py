@@ -3,6 +3,7 @@ import boto3
 
 from graph.orchestrator import build_graph
 from graph.state import GraphState
+from models.session import SessionStatus
 
 SESSIONS_TABLE = os.environ.get("DYNAMODB_TABLE_NAME", "")
 REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
@@ -48,18 +49,18 @@ def handler(event, context):
             "job_description": event["job_description"],
             "num_questions": event.get("num_questions", 5),
             "questions": None,
-            "status": "running",
+            "status": SessionStatus.RUNNING.value,
             "error": None,
         }
 
         result = build_graph().invoke(state)
 
-        if result.get("status") == "error":
-            _write_result(session_id, user_id, "error", error=result.get("error", "Unknown error"))
+        if result.get("status") == SessionStatus.ERROR.value:
+            _write_result(session_id, user_id, SessionStatus.ERROR.value, error=result.get("error", "Unknown error"))
         else:
-            _write_result(session_id, user_id, "completed", questions=result["questions"])
+            _write_result(session_id, user_id, SessionStatus.COMPLETED.value, questions=result["questions"])
 
     except Exception as exc:
-        _write_result(session_id, user_id, "error", error=str(exc))
+        _write_result(session_id, user_id, SessionStatus.ERROR.value, error=str(exc))
 
     return {"statusCode": 200}
