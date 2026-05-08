@@ -2,7 +2,12 @@ import os
 import sys
 from unittest.mock import patch, call
 
-from stacks.job_coach_stack import _ApiLocalBundler, _RunnerLocalBundler, _LINUX_PIP_FLAGS
+from stacks.job_coach_stack import (
+    _ApiLocalBundler,
+    _RunnerLocalBundler,
+    _AnswerCoachAssetBundler,
+    _LINUX_PIP_FLAGS,
+)
 
 
 def test_try_bundle_returns_true_on_success(tmp_path):
@@ -105,4 +110,40 @@ def test_runner_bundler_copies_handler(tmp_path):
 def test_runner_bundler_returns_false_on_failure(tmp_path):
     with patch("subprocess.check_call", side_effect=Exception("pip failed")):
         bundler = _RunnerLocalBundler("/fake/root")
+        assert bundler.try_bundle(str(tmp_path), None) is False
+
+
+# --- _AnswerCoachAssetBundler ---
+
+def test_answer_coach_asset_bundler_returns_true_on_success(tmp_path):
+    with patch("shutil.copy"), patch("shutil.copytree"):
+        bundler = _AnswerCoachAssetBundler("/fake/root")
+        assert bundler.try_bundle(str(tmp_path), None) is True
+
+
+def test_answer_coach_asset_bundler_copies_dockerfile_main_and_requirements(tmp_path):
+    with patch("shutil.copy") as mock_copy, patch("shutil.copytree"):
+        bundler = _AnswerCoachAssetBundler("/fake/root")
+        bundler.try_bundle(str(tmp_path), None)
+
+    sources = [c[0][0] for c in mock_copy.call_args_list]
+    assert os.path.join("/fake/root", "lambda", "answer_coach", "Dockerfile") in sources
+    assert os.path.join("/fake/root", "lambda", "answer_coach", "main.py") in sources
+    assert os.path.join("/fake/root", "lambda", "answer_coach", "requirements.txt") in sources
+
+
+def test_answer_coach_asset_bundler_copies_agents_tree(tmp_path):
+    with patch("shutil.copy"), patch("shutil.copytree") as mock_tree:
+        bundler = _AnswerCoachAssetBundler("/fake/root")
+        bundler.try_bundle(str(tmp_path), None)
+
+    sources = [c[0][0] for c in mock_tree.call_args_list]
+    dests = [c[0][1] for c in mock_tree.call_args_list]
+    assert os.path.join("/fake/root", "agents") in sources
+    assert os.path.join(str(tmp_path), "agents") in dests
+
+
+def test_answer_coach_asset_bundler_returns_false_on_failure(tmp_path):
+    with patch("shutil.copy", side_effect=OSError("disk full")):
+        bundler = _AnswerCoachAssetBundler("/fake/root")
         assert bundler.try_bundle(str(tmp_path), None) is False

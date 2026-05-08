@@ -11,5 +11,6 @@ USER agentcore
 EXPOSE 8080
 
 COPY main.py .
+COPY agents/ ./agents/
 
 CMD ["opentelemetry-instrument", "python", "main.py"]

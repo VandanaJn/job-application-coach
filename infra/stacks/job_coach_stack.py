@@ -96,6 +96,31 @@ class _RunnerLocalBundler:
             return False
 
 
+@jsii.implements(ILocalBundling)
+class _AnswerCoachAssetBundler:
+    """Bundles the AnswerCoach AgentCore CodeBuild source — Dockerfile + main.py + requirements.txt + agents/."""
+
+    def __init__(self, project_root: str) -> None:
+        self._root = project_root
+
+    def try_bundle(self, output_dir: str, options: BundlingOptions) -> bool:
+        try:
+            for f in ("Dockerfile", "main.py", "requirements.txt"):
+                shutil.copy(
+                    os.path.join(self._root, "lambda", "answer_coach", f),
+                    os.path.join(output_dir, f),
+                )
+            shutil.copytree(
+                os.path.join(self._root, "agents"),
+                os.path.join(output_dir, "agents"),
+                dirs_exist_ok=True,
+            )
+            return True
+        except Exception as exc:
+            print(f"Local bundling failed, falling back to Docker: {exc}")
+            return False
+
+
 class JobCoachStack(Stack):
     def __init__(
         self,
@@ -353,11 +378,23 @@ class JobCoachStack(Stack):
             resources=["*"],
         ))
 
-        # S3 asset — uploads lambda/answer_coach/ as a zip for CodeBuild source
+        # S3 asset — uploads the CodeBuild source (Dockerfile + main.py + requirements.txt + agents/)
+        # The bundler ensures agents/ ships alongside the lambda so main.py can import from it.
         answer_coach_asset = s3_assets.Asset(
             self,
             "AnswerCoachAsset",
-            path=os.path.join(project_root, "lambda", "answer_coach"),
+            path=project_root,
+            bundling=BundlingOptions(
+                image=lambda_.Runtime.PYTHON_3_12.bundling_image,
+                local=_AnswerCoachAssetBundler(project_root),
+                command=[
+                    "bash", "-c",
+                    "cp /asset-input/lambda/answer_coach/Dockerfile /asset-output/"
+                    " && cp /asset-input/lambda/answer_coach/main.py /asset-output/"
+                    " && cp /asset-input/lambda/answer_coach/requirements.txt /asset-output/"
+                    " && cp -r /asset-input/agents /asset-output/agents",
+                ],
+            ),
         )
         answer_coach_asset.grant_read(codebuild_role)
 
