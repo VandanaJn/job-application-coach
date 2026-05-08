@@ -3,9 +3,10 @@ import uuid
 import boto3
 from datetime import datetime, timezone
 from boto3.dynamodb.conditions import Key
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 
 from api.config import config
+from api.dependencies import current_user_id
 from models.session import SessionCreate, SessionResponse, SessionListResponse, SessionStatusResponse, QuestionItem
 from models.coaching import CoachRequest, CoachResponse
 
@@ -32,8 +33,8 @@ def _lambda_client():
 
 
 @router.post("", response_model=SessionResponse)
-def create_session(body: SessionCreate):
-    result = _jobs_table().get_item(Key={"user_id": config.user_id, "job_id": body.job_id})
+def create_session(body: SessionCreate, user_id: str = Depends(current_user_id)):
+    result = _jobs_table().get_item(Key={"user_id": user_id, "job_id": body.job_id})
     if "Item" not in result:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -41,7 +42,7 @@ def create_session(body: SessionCreate):
     created_at = datetime.now(timezone.utc).isoformat()
 
     _table().put_item(Item={
-        "user_id": config.user_id,
+        "user_id": user_id,
         "session_id": session_id,
         "job_id": body.job_id,
         "status": "pending",
@@ -57,9 +58,9 @@ def create_session(body: SessionCreate):
 
 
 @router.get("", response_model=SessionListResponse)
-def list_sessions():
+def list_sessions(user_id: str = Depends(current_user_id)):
     result = _table().query(
-        KeyConditionExpression=Key("user_id").eq(config.user_id)
+        KeyConditionExpression=Key("user_id").eq(user_id)
     )
     sessions = [
         SessionResponse(
@@ -74,8 +75,8 @@ def list_sessions():
 
 
 @router.get("/{session_id}", response_model=SessionResponse)
-def get_session(session_id: str):
-    result = _table().get_item(Key={"user_id": config.user_id, "session_id": session_id})
+def get_session(session_id: str, user_id: str = Depends(current_user_id)):
+    result = _table().get_item(Key={"user_id": user_id, "session_id": session_id})
     if "Item" not in result:
         raise HTTPException(status_code=404, detail="Session not found")
     item = result["Item"]
@@ -88,23 +89,23 @@ def get_session(session_id: str):
 
 
 @router.post("/{session_id}/run", response_model=SessionResponse)
-def run_session(session_id: str):
-    session_result = _table().get_item(Key={"user_id": config.user_id, "session_id": session_id})
+def run_session(session_id: str, user_id: str = Depends(current_user_id)):
+    session_result = _table().get_item(Key={"user_id": user_id, "session_id": session_id})
     if "Item" not in session_result:
         raise HTTPException(status_code=404, detail="Session not found")
     session = session_result["Item"]
 
-    user_result = _users_table().get_item(Key={"user_id": config.user_id})
+    user_result = _users_table().get_item(Key={"user_id": user_id})
     user = user_result.get("Item", {})
     resume_text = user.get("resume_text")
     if not resume_text:
         raise HTTPException(status_code=400, detail="No resume on file. Upload a resume first.")
 
-    job_result = _jobs_table().get_item(Key={"user_id": config.user_id, "job_id": session["job_id"]})
+    job_result = _jobs_table().get_item(Key={"user_id": user_id, "job_id": session["job_id"]})
     job = job_result.get("Item", {})
 
     _table().update_item(
-        Key={"user_id": config.user_id, "session_id": session_id},
+        Key={"user_id": user_id, "session_id": session_id},
         UpdateExpression="SET #st = :status",
         ExpressionAttributeNames={"#st": "status"},
         ExpressionAttributeValues={":status": "running"},
@@ -112,7 +113,7 @@ def run_session(session_id: str):
 
     payload = {
         "session_id": session_id,
-        "user_id": config.user_id,
+        "user_id": user_id,
         "job_id": session["job_id"],
         "resume_text": resume_text,
         "job_description": job.get("job_description", ""),
@@ -137,8 +138,12 @@ def _agentcore_client():
 
 
 @router.post("/{session_id}/coach", response_model=CoachResponse)
-def coach_answer(session_id: str, body: CoachRequest):
-    result = _table().get_item(Key={"user_id": config.user_id, "session_id": session_id})
+def coach_answer(
+    session_id: str,
+    body: CoachRequest,
+    user_id: str = Depends(current_user_id),
+):
+    result = _table().get_item(Key={"user_id": user_id, "session_id": session_id})
     if "Item" not in result:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -153,7 +158,7 @@ def coach_answer(session_id: str, body: CoachRequest):
     is_first_turn = body.runtime_session_id is None
     runtime_session_id = body.runtime_session_id or str(uuid.uuid4())
 
-    payload: dict = {"prompt": body.user_message, "user_id": config.user_id}
+    payload: dict = {"prompt": body.user_message, "user_id": user_id}
     if is_first_turn:
         payload["question"] = questions[body.question_index]["question"]
 
@@ -175,8 +180,8 @@ def coach_answer(session_id: str, body: CoachRequest):
 
 
 @router.get("/{session_id}/status", response_model=SessionStatusResponse)
-def get_session_status(session_id: str):
-    result = _table().get_item(Key={"user_id": config.user_id, "session_id": session_id})
+def get_session_status(session_id: str, user_id: str = Depends(current_user_id)):
+    result = _table().get_item(Key={"user_id": user_id, "session_id": session_id})
     if "Item" not in result:
         raise HTTPException(status_code=404, detail="Session not found")
     item = result["Item"]

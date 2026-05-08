@@ -1,8 +1,9 @@
 import boto3
 from datetime import datetime, timezone
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 
 from api.config import config
+from api.dependencies import current_user_id
 from models.user import UserProfileResponse, UserResumeResponse
 from parsers.pdf import extract_text
 
@@ -19,20 +20,23 @@ def _s3():
 
 
 @router.get("", response_model=UserProfileResponse)
-def get_user():
-    result = _table().get_item(Key={"user_id": config.user_id})
+def get_user(user_id: str = Depends(current_user_id)):
+    result = _table().get_item(Key={"user_id": user_id})
     item = result.get("Item")
     if not item:
-        return UserProfileResponse(user_id=config.user_id, has_resume=False)
+        return UserProfileResponse(user_id=user_id, has_resume=False)
     return UserProfileResponse(
-        user_id=config.user_id,
+        user_id=user_id,
         has_resume=True,
         resume_text_length=len(item.get("resume_text", "")),
     )
 
 
 @router.post("/resume", response_model=UserResumeResponse)
-def upload_resume(resume: UploadFile = File(...)):
+def upload_resume(
+    resume: UploadFile = File(...),
+    user_id: str = Depends(current_user_id),
+):
     if resume.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="Only PDF files are accepted")
 
@@ -42,19 +46,19 @@ def upload_resume(resume: UploadFile = File(...)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    s3_key = f"{config.user_id}/resume.pdf"
+    s3_key = f"{user_id}/resume.pdf"
     _s3().put_object(Bucket=config.s3_bucket_name, Key=s3_key, Body=pdf_bytes)
 
     uploaded_at = datetime.now(timezone.utc).isoformat()
     _table().put_item(Item={
-        "user_id": config.user_id,
+        "user_id": user_id,
         "resume_text": text,
         "s3_pdf_key": s3_key,
         "uploaded_at": uploaded_at,
     })
 
     return UserResumeResponse(
-        user_id=config.user_id,
+        user_id=user_id,
         resume_text_length=len(text),
         s3_pdf_key=s3_key,
         uploaded_at=uploaded_at,
