@@ -1,9 +1,13 @@
+import logging
 import os
 import boto3
 from langchain_core.messages import HumanMessage, AIMessage
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 
-from agents.answer_coach import build_answer_coach_agent, CoachingResponse
+from agents.answer_coach import build_answer_coach_agent
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 app = BedrockAgentCoreApp()
 
@@ -47,7 +51,18 @@ def invoke(payload, context):
 
     _conversation_history.append(HumanMessage(content=user_message))
 
-    coaching: CoachingResponse = _agent(_conversation_history)
+    result = _agent(_conversation_history)
+    coaching = result.coaching
+
+    logger.info(
+        "answer_coach turn user_id=%s turn=%d input_tokens=%d output_tokens=%d total_tokens=%d is_complete=%s",
+        user_id,
+        len(_conversation_history) // 2 + 1,
+        result.input_tokens,
+        result.output_tokens,
+        result.total_tokens,
+        coaching.is_complete,
+    )
 
     _conversation_history.append(AIMessage(content=coaching.response))
 

@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from typing import List
 
 from agents.retry import bedrock_retry_middleware
+from agents.usage import sum_usage
 from graph.state import InterviewQuestion
 
 BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-haiku-4-5-20251001-v1:0")
@@ -35,17 +36,6 @@ class InterviewPrepResult:
         return self.input_tokens + self.output_tokens
 
 
-def _sum_usage(messages: list) -> tuple[int, int]:
-    """Sum input/output tokens across all AIMessages in an agent run."""
-    total_in = 0
-    total_out = 0
-    for m in messages or []:
-        meta = getattr(m, "usage_metadata", None) or {}
-        total_in += meta.get("input_tokens", 0) or 0
-        total_out += meta.get("output_tokens", 0) or 0
-    return total_in, total_out
-
-
 def build_interview_prep_agent(num_questions: int = 5):
     """Convenience factory used by the LangGraph node."""
     model = ChatBedrockConverse(model=BEDROCK_MODEL_ID)
@@ -67,7 +57,7 @@ def build_interview_prep_agent(num_questions: int = 5):
         )
         result = agent.invoke({"messages": [{"role": "user", "content": prompt}]})
         structured: InterviewQuestions = result["structured_response"]
-        input_tokens, output_tokens = _sum_usage(result.get("messages", []))
+        input_tokens, output_tokens = sum_usage(result.get("messages", []))
         return InterviewPrepResult(
             questions=structured.questions,
             input_tokens=input_tokens,

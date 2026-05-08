@@ -1,4 +1,5 @@
 import os
+from dataclasses import dataclass
 from langchain.agents import create_agent
 from langchain.agents.middleware import SummarizationMiddleware
 from langchain.agents.structured_output import ToolStrategy
@@ -7,6 +8,7 @@ from langchain_core.messages import BaseMessage
 from pydantic import BaseModel
 
 from agents.retry import bedrock_retry_middleware
+from agents.usage import sum_usage
 
 BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-haiku-4-5-20251001-v1:0")
 
@@ -24,6 +26,17 @@ SYSTEM_PROMPT = (
 class CoachingResponse(BaseModel):
     response: str
     is_complete: bool
+
+
+@dataclass
+class CoachResult:
+    coaching: CoachingResponse
+    input_tokens: int
+    output_tokens: int
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
 
 
 def build_answer_coach_agent(user_memory: str = ""):
@@ -48,8 +61,13 @@ def build_answer_coach_agent(user_memory: str = ""):
         ],
     )
 
-    def run(messages: list[BaseMessage]) -> CoachingResponse:
+    def run(messages: list[BaseMessage]) -> CoachResult:
         result = agent.invoke({"messages": messages})
-        return result["structured_response"]
+        input_tokens, output_tokens = sum_usage(result.get("messages", []))
+        return CoachResult(
+            coaching=result["structured_response"],
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
 
     return run

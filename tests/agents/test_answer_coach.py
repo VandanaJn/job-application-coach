@@ -1,16 +1,32 @@
 from unittest.mock import MagicMock, patch
 from langchain_core.messages import HumanMessage, AIMessage
 
-from agents.answer_coach import build_answer_coach_agent, SYSTEM_PROMPT, CoachingResponse
+from agents.answer_coach import build_answer_coach_agent, SYSTEM_PROMPT, CoachingResponse, CoachResult
 
 QUESTION = "Tell me about a time you led a complex project."
 USER_MEMORY = "User tends to skip measurable outcomes. Strong on technical details."
 
 
-def _mock_agent(response_text: str = "Great start! Can you add the outcome?", is_complete: bool = False) -> MagicMock:
+def _ai_message_with_usage(input_tokens: int, output_tokens: int) -> AIMessage:
+    msg = AIMessage(content="ok")
+    msg.usage_metadata = {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": input_tokens + output_tokens,
+    }
+    return msg
+
+
+def _mock_agent(
+    response_text: str = "Great start! Can you add the outcome?",
+    is_complete: bool = False,
+    input_tokens: int = 80,
+    output_tokens: int = 30,
+) -> MagicMock:
     agent = MagicMock()
     agent.invoke.return_value = {
         "structured_response": CoachingResponse(response=response_text, is_complete=is_complete),
+        "messages": [_ai_message_with_usage(input_tokens, output_tokens)],
     }
     return agent
 
@@ -33,14 +49,15 @@ def test_build_returns_callable():
         assert callable(run)
 
 
-def test_run_returns_coaching_response():
+def test_run_returns_coach_result():
     agent = _mock_agent()
     p_model, p_create = _patch_factory(agent)
     with p_model, p_create:
         run = build_answer_coach_agent()
         messages = _first_turn_messages(QUESTION, "I once led a team of three.")
         result = run(messages)
-        assert isinstance(result, CoachingResponse)
+        assert isinstance(result, CoachResult)
+        assert isinstance(result.coaching, CoachingResponse)
 
 
 def test_response_text_is_passed_through():
@@ -50,7 +67,7 @@ def test_response_text_is_passed_through():
         run = build_answer_coach_agent()
         messages = _first_turn_messages(QUESTION, "I once led a team.")
         result = run(messages)
-        assert result.response == "Can you quantify the impact?"
+        assert result.coaching.response == "Can you quantify the impact?"
 
 
 def test_create_agent_called_with_system_prompt():
@@ -125,7 +142,7 @@ def test_is_complete_false_by_default():
     with p_model, p_create:
         run = build_answer_coach_agent()
         result = run(_first_turn_messages(QUESTION, "I led a team."))
-        assert result.is_complete is False
+        assert result.coaching.is_complete is False
 
 
 def test_is_complete_true_when_agent_says_so():
@@ -134,7 +151,18 @@ def test_is_complete_true_when_agent_says_so():
     with p_model, p_create:
         run = build_answer_coach_agent()
         result = run(_first_turn_messages(QUESTION, "Detailed STAR answer here."))
-        assert result.is_complete is True
+        assert result.coaching.is_complete is True
+
+
+def test_run_captures_token_usage():
+    agent = _mock_agent(input_tokens=120, output_tokens=40)
+    p_model, p_create = _patch_factory(agent)
+    with p_model, p_create:
+        run = build_answer_coach_agent()
+        result = run(_first_turn_messages(QUESTION, "I led a team."))
+        assert result.input_tokens == 120
+        assert result.output_tokens == 40
+        assert result.total_tokens == 160
 
 
 def test_user_memory_appears_in_system_prompt():
