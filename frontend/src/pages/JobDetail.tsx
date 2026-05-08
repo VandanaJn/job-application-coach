@@ -80,21 +80,34 @@ export default function JobDetail() {
         )}
 
         <div className="space-y-3">
-          {sessions.map((session) => (
-            <Link
-              key={session.session_id}
-              to={`/sessions/${session.session_id}`}
-              className="block bg-white rounded-xl border border-gray-200 p-4 hover:border-indigo-300 hover:shadow-sm transition-all"
-            >
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-600 font-mono">{session.session_id.slice(0, 8)}…</p>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[session.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                  {session.status}
-                </span>
-              </div>
-              <p className="text-xs text-gray-400 mt-1">{new Date(session.created_at).toLocaleString()}</p>
-            </Link>
-          ))}
+          {sessions.map((session) => {
+            const summary: string[] = [];
+            if (session.questions_count != null) {
+              summary.push(`${session.questions_count} ${session.questions_count === 1 ? 'question' : 'questions'}`);
+            }
+            if (session.total_tokens != null) {
+              summary.push(`${session.total_tokens.toLocaleString()} tokens`);
+            }
+            return (
+              <Link
+                key={session.session_id}
+                to={`/sessions/${session.session_id}`}
+                className="block bg-white rounded-xl border border-gray-200 p-4 hover:border-indigo-300 hover:shadow-sm transition-all"
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-gray-800">
+                    {new Date(session.created_at).toLocaleString()}
+                  </p>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[session.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                    {session.status}
+                  </span>
+                </div>
+                {summary.length > 0 && (
+                  <p className="text-xs text-gray-500 mt-1">{summary.join(' · ')}</p>
+                )}
+              </Link>
+            );
+          })}
         </div>
       </div>
     </div>

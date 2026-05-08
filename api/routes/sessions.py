@@ -49,20 +49,25 @@ def create_session(body: SessionCreate, user_id: str = Depends(current_user_id))
     )
 
 
+def _summarize_session(item: dict) -> SessionResponse:
+    questions = item.get("questions")
+    total_tokens = item.get("usage_total_tokens")
+    return SessionResponse(
+        session_id=item["session_id"],
+        job_id=item.get("job_id", ""),
+        status=item["status"],
+        created_at=item["created_at"],
+        questions_count=len(questions) if questions else None,
+        total_tokens=int(total_tokens) if total_tokens is not None else None,
+    )
+
+
 @router.get("", response_model=SessionListResponse)
 def list_sessions(user_id: str = Depends(current_user_id)):
     result = _sessions_table.query(
         KeyConditionExpression=Key("user_id").eq(user_id)
     )
-    sessions = [
-        SessionResponse(
-            session_id=item["session_id"],
-            job_id=item.get("job_id", ""),
-            status=item["status"],
-            created_at=item["created_at"],
-        )
-        for item in result.get("Items", [])
-    ]
+    sessions = [_summarize_session(item) for item in result.get("Items", [])]
     return SessionListResponse(sessions=sessions)
 
 
@@ -71,13 +76,7 @@ def get_session(session_id: str, user_id: str = Depends(current_user_id)):
     result = _sessions_table.get_item(Key={"user_id": user_id, "session_id": session_id})
     if "Item" not in result:
         raise HTTPException(status_code=404, detail="Session not found")
-    item = result["Item"]
-    return SessionResponse(
-        session_id=item["session_id"],
-        job_id=item.get("job_id", ""),
-        status=item["status"],
-        created_at=item["created_at"],
-    )
+    return _summarize_session(result["Item"])
 
 
 @router.post("/{session_id}/run", response_model=SessionResponse)

@@ -253,12 +253,34 @@
             "title": "Job Id",
             "type": "string"
           },
+          "questions_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Questions Count"
+          },
           "session_id": {
             "title": "Session Id",
             "type": "string"
           },
           "status": {
             "$ref": "#/components/schemas/SessionStatus"
+          },
+          "total_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Tokens"
           }
         },
         "required": [

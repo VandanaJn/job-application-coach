@@ -248,9 +248,13 @@ export interface components {
             created_at: string;
             /** Job Id */
             job_id: string;
+            /** Questions Count */
+            questions_count?: number | null;
             /** Session Id */
             session_id: string;
             status: components["schemas"]["SessionStatus"];
+            /** Total Tokens */
+            total_tokens?: number | null;
         };
         /**
          * SessionStatus

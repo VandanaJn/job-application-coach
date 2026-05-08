@@ -25,6 +25,9 @@ class SessionResponse(BaseModel):
     job_id: str
     status: SessionStatus
     created_at: str
+    # Populated once the session has run; absent for pending/running rows.
+    questions_count: Optional[int] = None
+    total_tokens: Optional[int] = None
 
 
 class SessionListResponse(BaseModel):

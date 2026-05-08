@@ -65,6 +65,43 @@ def test_list_sessions_empty(client):
     assert response.json()["sessions"] == []
 
 
+def test_list_sessions_includes_summary_for_completed(client, aws_env):
+    dynamodb, _ = aws_env
+    job_id = _seed_job(dynamodb)
+    session_id = client.post("/sessions", json={"job_id": job_id}).json()["session_id"]
+    dynamodb.Table(SESSIONS_TABLE).update_item(
+        Key={"user_id": USER_ID, "session_id": session_id},
+        UpdateExpression=(
+            "SET #st = :s, questions = :q, "
+            "usage_input_tokens = :uin, usage_output_tokens = :uout, usage_total_tokens = :utotal"
+        ),
+        ExpressionAttributeNames={"#st": "status"},
+        ExpressionAttributeValues={
+            ":s": "completed",
+            ":q": [{"question": "Q?", "category": "behavioral"}] * 3,
+            ":uin": 120,
+            ":uout": 80,
+            ":utotal": 200,
+        },
+    )
+
+    response = client.get("/sessions")
+    [row] = response.json()["sessions"]
+    assert row["questions_count"] == 3
+    assert row["total_tokens"] == 200
+
+
+def test_list_sessions_omits_summary_for_pending(client, aws_env):
+    dynamodb, _ = aws_env
+    job_id = _seed_job(dynamodb)
+    client.post("/sessions", json={"job_id": job_id})
+
+    response = client.get("/sessions")
+    [row] = response.json()["sessions"]
+    assert row["questions_count"] is None
+    assert row["total_tokens"] is None
+
+
 def test_get_session_returns_session(client, aws_env):
     dynamodb, _ = aws_env
     job_id = _seed_job(dynamodb)
