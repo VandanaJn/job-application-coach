@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUploadResume } from '../hooks/useUser';
+import ErrorBanner from '../components/ErrorBanner';
 
 export default function ResumeUpload() {
   const [file, setFile] = useState<File | null>(null);
@@ -54,7 +55,9 @@ export default function ResumeUpload() {
         </div>
 
         {error && (
-          <p className="mt-3 text-sm text-red-600">{(error as Error).message}</p>
+          <div className="mt-3">
+            <ErrorBanner message={(error as Error).message} />
+          </div>
         )}
 
         <button

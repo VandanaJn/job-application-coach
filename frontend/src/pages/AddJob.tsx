@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCreateJob } from '../hooks/useJobs';
+import ErrorBanner from '../components/ErrorBanner';
 
 type Mode = 'url' | 'text';
 
@@ -99,9 +100,7 @@ export default function AddJob() {
             </>
           )}
 
-          {error && (
-            <p className="text-sm text-red-600">{(error as Error).message}</p>
-          )}
+          {error && <ErrorBanner message={(error as Error).message} />}
 
           <button
             type="submit"

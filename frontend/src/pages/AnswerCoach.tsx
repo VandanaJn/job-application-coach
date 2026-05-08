@@ -6,7 +6,7 @@ import { useLocalStorage } from '../hooks/useLocalStorage';
 import type { QuestionItem } from '../types';
 
 interface Message {
-  role: 'user' | 'coach';
+  role: 'user' | 'coach' | 'error';
   text: string;
 }
 
@@ -71,6 +71,21 @@ function QuestionHeader({
 }
 
 function MessageBubble({ message }: { message: Message }) {
+  if (message.role === 'error') {
+    return (
+      <div className="flex justify-start">
+        <div
+          role="alert"
+          className="max-w-[85%] rounded-2xl rounded-bl-sm bg-red-50 border border-red-200 text-red-800 px-4 py-3 text-sm leading-relaxed"
+        >
+          <p className="text-xs font-semibold text-red-600 mb-1 flex items-center gap-1">
+            <span className="text-base leading-none">⚠</span> Coaching failed
+          </p>
+          <p className="whitespace-pre-wrap">{message.text}</p>
+        </div>
+      </div>
+    );
+  }
   const isUser = message.role === 'user';
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -188,7 +203,7 @@ export default function AnswerCoach() {
             ...prev,
             [questionIndex]: [
               ...(prev[questionIndex] ?? []),
-              { role: 'coach', text: `Something went wrong: ${err.message}` },
+              { role: 'error', text: err.message },
             ],
           }));
         },

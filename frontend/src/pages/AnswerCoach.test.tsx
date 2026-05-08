@@ -216,7 +216,7 @@ describe('AnswerCoach', () => {
     );
   });
 
-  it('shows error message in chat on coach API failure', async () => {
+  it('shows error bubble in chat on coach API failure', async () => {
     const user = userEvent.setup();
     mockMutate.mockImplementation((_body: unknown, { onError }: { onError: (e: Error) => void }) => {
       onError(new Error('Network error'));
@@ -227,8 +227,10 @@ describe('AnswerCoach', () => {
     await user.type(textarea, 'My answer{Enter}');
 
     await waitFor(() => {
-      expect(screen.getByText(/something went wrong: network error/i)).toBeInTheDocument();
+      expect(screen.getByRole('alert')).toBeInTheDocument();
     });
+    expect(screen.getByText(/coaching failed/i)).toBeInTheDocument();
+    expect(screen.getByText(/network error/i)).toBeInTheDocument();
   });
 
   it('navigates back to session detail when back button clicked', async () => {
