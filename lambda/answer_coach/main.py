@@ -1,7 +1,9 @@
 import os
 import boto3
+from langchain.agents import create_agent
+from langchain.agents.structured_output import ToolStrategy
 from langchain_aws import ChatBedrockConverse
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from pydantic import BaseModel
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 
@@ -24,7 +26,7 @@ SYSTEM_PROMPT = (
 # Per-session in-memory state.
 # AgentCore pins each runtimeSessionId to a single microVM, so this is safe.
 _conversation_history: list = []
-_system_prompt: str = ""
+_agent = None
 
 
 class CoachingResponse(BaseModel):
@@ -45,19 +47,31 @@ def _load_user_memory(user_id: str) -> str:
         return ""
 
 
+def _build_agent(user_id: str):
+    user_memory = _load_user_memory(user_id)
+    system_prompt = SYSTEM_PROMPT
+    if user_memory:
+        system_prompt += f"\n\nUser coaching notes: {user_memory}"
+
+    model = ChatBedrockConverse(model=BEDROCK_MODEL_ID)
+    return create_agent(
+        model=model,
+        tools=[],
+        system_prompt=system_prompt,
+        response_format=ToolStrategy(CoachingResponse),
+    )
+
+
 @app.entrypoint
 def invoke(payload, context):
-    global _conversation_history, _system_prompt
+    global _conversation_history, _agent
 
     user_message = payload.get("prompt", "")
     question = payload.get("question")
     user_id = payload.get("user_id", "default")
 
-    if not _system_prompt:
-        user_memory = _load_user_memory(user_id)
-        _system_prompt = SYSTEM_PROMPT
-        if user_memory:
-            _system_prompt += f"\n\nUser coaching notes: {user_memory}"
+    if _agent is None:
+        _agent = _build_agent(user_id)
 
     # First turn: frame the user message as question + answer
     if question and not _conversation_history:
@@ -65,15 +79,12 @@ def invoke(payload, context):
 
     _conversation_history.append(HumanMessage(content=user_message))
 
-    model = ChatBedrockConverse(model=BEDROCK_MODEL_ID)
-    structured_llm = model.with_structured_output(CoachingResponse)
-    result = structured_llm.invoke(
-        [SystemMessage(content=_system_prompt)] + _conversation_history
-    )
+    result = _agent.invoke({"messages": _conversation_history})
+    coaching: CoachingResponse = result["structured_response"]
 
-    _conversation_history.append(AIMessage(content=result.response))
+    _conversation_history.append(AIMessage(content=coaching.response))
 
-    return {"response": result.response, "is_complete": result.is_complete}
+    return {"response": coaching.response, "is_complete": coaching.is_complete}
 
 
 app.run()

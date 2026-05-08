@@ -1,6 +1,7 @@
 import os
+from langchain.agents import create_agent
+from langchain.agents.structured_output import ToolStrategy
 from langchain_aws import ChatBedrockConverse
-from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 from typing import List
 
@@ -21,14 +22,17 @@ class InterviewQuestions(BaseModel):
     questions: List[InterviewQuestion]
 
 
-def create_agent(model, tools, system_prompt):
-    """
-    Creates an interview prep agent callable.
-    tools is unused but kept for interface consistency across all agents.
-    """
-    structured_llm = model.with_structured_output(InterviewQuestions)
+def build_interview_prep_agent(num_questions: int = 5):
+    """Convenience factory used by the LangGraph node."""
+    model = ChatBedrockConverse(model=BEDROCK_MODEL_ID)
+    agent = create_agent(
+        model=model,
+        tools=[],
+        system_prompt=SYSTEM_PROMPT,
+        response_format=ToolStrategy(InterviewQuestions),
+    )
 
-    def agent(resume_text: str, job_description: str, num_questions: int = 5) -> InterviewQuestions:
+    def run(resume_text: str, job_description: str) -> InterviewQuestions:
         prompt = (
             f"Generate exactly {num_questions} interview questions for this candidate.\n\n"
             f"RESUME:\n{resume_text}\n\n"
@@ -36,20 +40,7 @@ def create_agent(model, tools, system_prompt):
             f"Return exactly {num_questions} questions covering behavioral, technical, "
             f"and situational categories as appropriate."
         )
-        return structured_llm.invoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=prompt),
-        ])
-
-    return agent
-
-
-def build_interview_prep_agent(num_questions: int = 5):
-    """Convenience factory used by the LangGraph node."""
-    model = ChatBedrockConverse(model=BEDROCK_MODEL_ID)
-    agent = create_agent(model, [], SYSTEM_PROMPT)
-
-    def run(resume_text: str, job_description: str) -> InterviewQuestions:
-        return agent(resume_text, job_description, num_questions)
+        result = agent.invoke({"messages": [{"role": "user", "content": prompt}]})
+        return result["structured_response"]
 
     return run

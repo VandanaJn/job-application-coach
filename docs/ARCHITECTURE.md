@@ -1,5 +1,16 @@
 # Architecture
 
+## User Inputs
+- **Resume**: PDF upload → parsed server-side with pypdf → text extracted and passed to agents
+- **Job description**: URL or plain text paste
+  - URL: backend fetches + BeautifulSoup → returns `job_title`, `company`, `job_description`
+  - Text paste: `job_description` populated directly; user fills `job_title`/`company` manually
+  - UI shows parsed title + company for user to confirm/edit before proceeding
+  - If URL scraping fails (JS-rendered, auth walls): return clear error asking user to paste text
+  - LinkedIn, Indeed, Glassdoor block scraping — UI must tell users to paste text for those
+
+---
+
 ## System Overview
 
 The Job Application Coach is a multi-agent pipeline orchestrated by a LangGraph `StateGraph`. Each agent is a node in the graph. Guardrail nodes sit at the boundaries between agents to validate inputs and outputs. The entire graph is traced via LangSmith.

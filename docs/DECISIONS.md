@@ -78,26 +78,32 @@ The runner Lambda (`lambda/runner/handler.py`) imports from `graph/` and `agents
 
 ---
 
-## ADR-015 — create_agent pattern for all agents (no LCEL pipes)
+## ADR-015 — `langchain.agents.create_agent` (LangChain 1.x) for all agents
 
-**Date:** 2026-05-03
+**Date:** 2026-05-03 (revised 2026-05-08)
 
 **Context:**
-LangChain supports multiple patterns for calling LLMs: LCEL pipe syntax (`prompt | llm | parser`), direct `llm.invoke()`, and the newer `create_agent(model, tools, system_prompt)` declarative API.
+LangChain 1.x ships a top-level `create_agent` API in `langchain.agents` that builds a compiled LangGraph agent in one call: model + tools + system prompt + structured-output strategy + middleware. It supersedes the legacy `AgentExecutor` and replaces hand-rolled LCEL pipe chains. The first revision of this ADR adopted a *custom* `create_agent(model, tools, system_prompt)` factory in our agent modules — same name, but it returned a plain Python closure around `model.with_structured_output()` and reused none of the framework. That was a mistake and has been replaced.
 
 **Options considered:**
-- **LCEL pipe syntax** — composable but lower-level; chains are implicit and harder to read
-- **Direct `llm.invoke()`** — simple for one-off calls but inconsistent across agents
-- **`create_agent()`** — declarative, consistent, provider-agnostic, aligns with current LangChain docs
+- **LCEL pipe syntax** (`prompt | llm | parser`) — composable but lower-level; chains are implicit and harder to read
+- **Direct `model.with_structured_output().invoke()`** — simple for one-off calls; loses agent-level tracing, no middleware path, no future tool support
+- **Custom `create_agent` factory** — what we had originally; shadows the real LangChain API with a name-alike that does much less, misleading anyone familiar with LangChain 1.x
+- **`from langchain.agents import create_agent`** — the real LangChain 1.x API; gives a compiled LangGraph agent with built-in middleware (`SummarizationMiddleware`, `HumanInTheLoopMiddleware`, custom `@before_model` / `@wrap_model_call` hooks), agent-level LangSmith spans, and a clean tool-calling loop when tools are added
 
-**Decision:** `create_agent(model, tools, system_prompt)` used consistently across all agents
+**Decision:** Use `langchain.agents.create_agent` directly. Each agent module exposes a `build_*_agent()` factory that constructs a `ChatBedrockConverse` model, calls `create_agent(model=..., tools=[], system_prompt=..., response_format=ToolStrategy(Schema))`, and returns a thin callable that builds the user message and unwraps `result["structured_response"]`.
 
 **Rationale:**
-- Consistent pattern across all four agents makes the codebase easier to reason about
-- Declarative style is more readable — intent is clear from the constructor arguments
-- `create_agent` is the pattern LangChain currently promotes in its documentation
-- No LCEL pipe syntax anywhere in the codebase — one less concept to explain in interviews
-- `with_structured_output()` still used on the model where structured Pydantic responses are needed
+- Real framework, not a name-alike — readers familiar with LangChain 1.x see what they expect
+- `response_format=ToolStrategy(Pydantic)` replaces the old `model.with_structured_output()` call; structured response is accessed via `result["structured_response"]`
+- `ToolStrategy` (rather than `ProviderStrategy` or a bare schema) is explicit about going through tool calling, which is the path that works reliably across Bedrock + Claude
+- Future agents that need tools (`MemoryUpdateAgent`, anything searching prior sessions) drop tools straight into the same call site — no refactor
+- Future-proof for middleware: long coaching conversations in AgentCore can plug in `SummarizationMiddleware` without restructuring the agent
+- Agent-level spans appear in LangSmith automatically — a portfolio talking point that the original custom factory was silently giving up
+
+**Notes for future maintainers:**
+- Empty `tools=[]` is intentional and supported — agents that need only structured output don't need tools
+- Tests mock `create_agent` (the import) to return a stub agent whose `.invoke()` yields the expected `structured_response` — this isolates our integration glue from LangChain's internals
 
 ---
 

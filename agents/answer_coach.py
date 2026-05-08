@@ -1,6 +1,8 @@
 import os
+from langchain.agents import create_agent
+from langchain.agents.structured_output import ToolStrategy
 from langchain_aws import ChatBedrockConverse
-from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.messages import BaseMessage
 from pydantic import BaseModel
 
 BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-haiku-4-5-20251001-v1:0")
@@ -21,23 +23,22 @@ class CoachingResponse(BaseModel):
     is_complete: bool
 
 
-def create_agent(model, tools, system_prompt):
-    """
-    Creates an answer coach agent callable.
-    tools is unused but kept for interface consistency across all agents.
-    """
-    structured_llm = model.with_structured_output(CoachingResponse)
-
-    def agent(messages: list[BaseMessage]) -> CoachingResponse:
-        return structured_llm.invoke([SystemMessage(content=system_prompt)] + messages)
-
-    return agent
-
-
 def build_answer_coach_agent(user_memory: str = ""):
     """Convenience factory used by the AgentCore entrypoint."""
     model = ChatBedrockConverse(model=BEDROCK_MODEL_ID)
     system_prompt = SYSTEM_PROMPT
     if user_memory:
         system_prompt += f"\n\nUser coaching notes: {user_memory}"
-    return create_agent(model, [], system_prompt)
+
+    agent = create_agent(
+        model=model,
+        tools=[],
+        system_prompt=system_prompt,
+        response_format=ToolStrategy(CoachingResponse),
+    )
+
+    def run(messages: list[BaseMessage]) -> CoachingResponse:
+        result = agent.invoke({"messages": messages})
+        return result["structured_response"]
+
+    return run
