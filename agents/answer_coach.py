@@ -1,5 +1,6 @@
 import os
 from langchain.agents import create_agent
+from langchain.agents.middleware import SummarizationMiddleware
 from langchain.agents.structured_output import ToolStrategy
 from langchain_aws import ChatBedrockConverse
 from langchain_core.messages import BaseMessage
@@ -35,6 +36,13 @@ def build_answer_coach_agent(user_memory: str = ""):
         tools=[],
         system_prompt=system_prompt,
         response_format=ToolStrategy(CoachingResponse),
+        middleware=[
+            SummarizationMiddleware(
+                model=model,
+                trigger=("tokens", 8000),
+                keep=("messages", 10),
+            ),
+        ],
     )
 
     def run(messages: list[BaseMessage]) -> CoachingResponse:
