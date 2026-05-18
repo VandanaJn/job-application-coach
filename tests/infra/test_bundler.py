@@ -1,6 +1,6 @@
 import os
 import sys
-from unittest.mock import patch, call
+from unittest.mock import patch
 
 from stacks.job_coach_stack import (
     _ApiLocalBundler,

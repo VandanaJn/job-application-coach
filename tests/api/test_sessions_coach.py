@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from botocore.exceptions import ClientError
 
-from tests.api.conftest import SESSIONS_TABLE, JOBS_TABLE, USERS_TABLE, USER_ID
+from tests.api.conftest import SESSIONS_TABLE, JOBS_TABLE, USER_ID
 
 QUESTION = {"question": "Tell me about leading a project.", "category": "behavioral"}
 
