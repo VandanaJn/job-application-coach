@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -8,7 +8,7 @@ import AnswerCoach from './AnswerCoach';
 // --- mock hooks ---
 const mockUseSessionStatus = vi.fn();
 const mockMutate = vi.fn();
-const mockUseCoachAnswer = vi.fn(() => ({ mutate: mockMutate, isPending: false }));
+const mockUseCoachAnswer = vi.fn();
 
 vi.mock('../hooks/useSessions', () => ({
   useSessionStatus: (...args: unknown[]) => mockUseSessionStatus(...args),
@@ -83,7 +83,6 @@ describe('AnswerCoach', () => {
 
   it('disables send button when input is empty', () => {
     renderCoach();
-    const btn = screen.getByRole('button', { name: '' }); // svg-only send button
     // find the send button by its parent structure — disabled when empty
     const textarea = screen.getByPlaceholderText(/type your answer/i);
     expect(textarea).toBeInTheDocument();
@@ -335,6 +334,122 @@ describe('AnswerCoach', () => {
     });
     // Per-question banner should NOT appear for the final question
     expect(screen.queryByText(/strong answer — well done/i)).not.toBeInTheDocument();
+  });
+
+  describe('Voice input', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let mockInstance: any;
+
+    const buildMock = () =>
+      vi.fn().mockImplementation(function () {
+        mockInstance = {
+          start: vi.fn(),
+          stop: vi.fn(),
+          onresult: null,
+          onend: null,
+          onerror: null,
+          continuous: false,
+          interimResults: false,
+          lang: '',
+        };
+        return mockInstance;
+      });
+
+    let MockSR: ReturnType<typeof buildMock>;
+
+    beforeEach(() => {
+      MockSR = buildMock();
+      Object.defineProperty(window, 'SpeechRecognition', {
+        value: MockSR,
+        writable: true,
+        configurable: true,
+      });
+    });
+
+    afterEach(() => {
+      Object.defineProperty(window, 'SpeechRecognition', {
+        value: undefined,
+        writable: true,
+        configurable: true,
+      });
+    });
+
+    it('renders mic button when SpeechRecognition is supported', () => {
+      renderCoach();
+      expect(screen.getByRole('button', { name: /start recording/i })).toBeInTheDocument();
+    });
+
+    it('does not render mic button when SpeechRecognition is unsupported', () => {
+      Object.defineProperty(window, 'SpeechRecognition', {
+        value: undefined,
+        writable: true,
+        configurable: true,
+      });
+      renderCoach();
+      expect(screen.queryByRole('button', { name: /recording/i })).not.toBeInTheDocument();
+    });
+
+    it('starts recognition on mic click', async () => {
+      const user = userEvent.setup();
+      renderCoach();
+      await user.click(screen.getByRole('button', { name: /start recording/i }));
+      expect(MockSR).toHaveBeenCalledTimes(1);
+      expect(mockInstance.start).toHaveBeenCalledTimes(1);
+    });
+
+    it('fills textarea with voice transcript', async () => {
+      const user = userEvent.setup();
+      renderCoach();
+      await user.click(screen.getByRole('button', { name: /start recording/i }));
+
+      const fakeEvent = {
+        results: {
+          length: 1,
+          0: { 0: { transcript: 'hello world' }, isFinal: true, length: 1 },
+        },
+      } as unknown as SpeechRecognitionEvent;
+
+      act(() => { mockInstance.onresult(fakeEvent); });
+
+      await waitFor(() => {
+        expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('hello world');
+      });
+    });
+
+    it('appends transcript to existing typed text', async () => {
+      const user = userEvent.setup();
+      renderCoach();
+      await user.type(screen.getByRole('textbox'), 'I also');
+      await user.click(screen.getByRole('button', { name: /start recording/i }));
+
+      const fakeEvent = {
+        results: { length: 1, 0: { 0: { transcript: 'led the project' }, length: 1 } },
+      } as unknown as SpeechRecognitionEvent;
+
+      act(() => { mockInstance.onresult(fakeEvent); });
+
+      await waitFor(() => {
+        expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('I also led the project');
+      });
+    });
+
+    it('stops recognition on second mic click', async () => {
+      const user = userEvent.setup();
+      renderCoach();
+      await user.click(screen.getByRole('button', { name: /start recording/i }));
+      await user.click(screen.getByRole('button', { name: /stop recording/i }));
+      expect(mockInstance.stop).toHaveBeenCalledTimes(1);
+    });
+
+    it('resets mic button label after recognition ends naturally', async () => {
+      const user = userEvent.setup();
+      renderCoach();
+      await user.click(screen.getByRole('button', { name: /start recording/i }));
+      act(() => { mockInstance.onend(); });
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start recording/i })).toBeInTheDocument();
+      });
+    });
   });
 
   it('navigates to session detail from session-complete banner', async () => {

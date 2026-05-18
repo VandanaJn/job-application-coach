@@ -225,7 +225,6 @@ class JobCoachStack(Stack):
         )
 
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-        lambda_root = os.path.join(project_root, "lambda")
 
         shared_env = {
             "ENVIRONMENT": env_name,

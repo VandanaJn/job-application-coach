@@ -6,6 +6,33 @@ Use this as a reference when discussing the project in interviews.
 
 ---
 
+## ADR-020 — Ship interview_prep + answer_coach first; defer guards, tracing, and feedback
+
+**Date:** 2026-05-09
+
+**Context:**
+The target pipeline has five LangGraph nodes (input_guard → interview_prep → output_guard → feedback → memory_update) plus a separately hosted AnswerCoachAgent in AgentCore. Building all of this in one go delays the working demo significantly and makes it harder to validate the coaching UX early.
+
+**Options considered:**
+- **Build full pipeline before shipping** — all nodes, guards, LangSmith tracing, feedback agent, and memory update in one go; highest confidence in the full design but slowest path to a usable end-to-end flow
+- **Ship interview_prep + answer_coach only; defer the rest** — the two agents that deliver the core user value (questions + coaching) ship first; guards, feedback, and memory update follow once the coaching loop is validated
+
+**Decision:** Ship `interview_prep` (Lambda Runner) and `answer_coach` (AgentCore) first. Defer `input_guard`, `output_guard`, `feedback`, `memory_update`, LangSmith tracing, and Bedrock Guardrails.
+
+**Rationale:**
+- The core user value — "get tailored questions, then practice answering them with an AI coach" — is fully delivered by two agents; the rest is quality/safety infrastructure layered on top
+- Validating the coaching UX early (voice input, multi-turn flow, `runtimeSessionId` pinning) is higher priority than correctness guardrails on a personal-use tool
+- Deferred components are already scaffolded: `BEDROCK_GUARDRAIL_ID` env var exists (empty), `langsmith` dependency is installed, DynamoDB tables for checkpoints and memory are provisioned, graph state has fields for feedback/memory outputs
+- Nothing in the shipped code contradicts the full design — adding the deferred nodes is additive, not a rewrite
+- For portfolio purposes, being explicit about what is shipped vs planned demonstrates design maturity more than shipping a half-built version of everything
+
+**What is affected:**
+- `ARCHITECTURE.md` — pipeline diagram annotates shipped vs planned nodes
+- `docs/architecture.excalidraw` — dashed nodes/arrows for planned components
+- ADR-004 and ADR-009 — note current status in those records
+
+---
+
 ## ADR-019 — AnswerCoachAgent deployed as Amazon Bedrock AgentCore Runtime
 
 **Date:** 2026-05-05
@@ -311,6 +338,8 @@ We need input validation, output validation, and content safety checks at agent 
 - Replaceable without touching agent logic — swap Bedrock Guardrails for a different provider by changing one node
 - Makes the guardrail logic explicit in the graph definition, not hidden in callbacks
 
+**Current status:** Guard nodes are the target architecture and this decision stands. Implementation is deferred — the graph currently runs `interview_prep → END` with no guard nodes. `BEDROCK_GUARDRAIL_ID` is provisioned in Lambda env vars with an empty value, ready to be filled when the nodes are added.
+
 ---
 
 ## ADR-005 — Browser Web Speech API over AWS Transcribe
@@ -415,11 +444,13 @@ We need to evaluate agent output quality — are the identified gaps accurate? A
 **Decision:** LangSmith evals
 
 **Rationale:**
-- LangSmith is already in the stack for tracing — evals use the same SDK and dashboard
+- LangSmith is the natural pairing for a LangChain/LangGraph stack — tracing and evals share the same SDK and dashboard
 - LLM-as-judge evaluators are well-suited for subjective quality metrics (question relevance, feedback specificity)
 - Dataset versioning built in — golden examples stored and versioned in LangSmith, not in the repo
 - CI integration is straightforward — `langsmith eval run` command in GitHub Actions
 - Less boilerplate than building a custom framework for the same outcome
+
+**Current status:** `langsmith>=0.1.0` is in `requirements.txt`. Tracing is not yet active — `LANGSMITH_API_KEY` and `LANGSMITH_TRACING_V2` env vars are not set, and no tracing initialisation exists in any handler or agent. Wiring it up is the next observability task; the design decision and dependency are already in place.
 
 ---
 

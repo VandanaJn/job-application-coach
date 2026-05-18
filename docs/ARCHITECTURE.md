@@ -13,20 +13,59 @@
 
 ## System Overview
 
-The Job Application Coach is a multi-agent pipeline orchestrated by a LangGraph `StateGraph`. Each agent is a node in the graph. Guardrail nodes sit at the boundaries between agents to validate inputs and outputs. The entire graph is traced via LangSmith.
+The Job Application Coach is a multi-agent pipeline orchestrated by a LangGraph `StateGraph`. Each agent is a node in the graph.
 
 The backend runs as a FastAPI app on AWS Lambda, behind API Gateway. State is persisted in DynamoDB. PDFs are stored in S3. The frontend is a React SPA that runs locally and calls the API.
+
+**Current implementation status:** The shipped graph runs `interview_prep → END` only. Guardrail nodes and LangSmith tracing are designed into the architecture (see ADR-004 and ADR-009) but not yet implemented — they are marked as planned in the diagram and pipeline below.
 
 ---
 
 ## Agent Pipeline
+
+### Shipped (Lambda LangGraph Runner)
+
+```
+[User: PDF + JD]
+      │
+      ▼
+┌──────────────────────┐
+│  interview_prep  ✓   │  generates questions from resume + JD
+│  (num_questions=5)   │  structured output via ToolStrategy(InterviewQuestions)
+└──────────────────────┘
+      │
+      ▼
+   [END] → writes questions + status=completed to DynamoDB
+```
+
+### Shipped (AgentCore Runtime — invoked per POST /sessions/{id}/coach)
+
+```
+[User answer]
+      │
+      ▼
+┌──────────────────────┐
+│  answer_coach  ✓     │  multi-turn coaching, reads UserMemory on first turn
+│  (loops per question)│  runtimeSessionId pins session to microVM
+└──────────────────────┘
+```
+
+### Planned additions (not yet implemented)
+
+- **input_guard** — before interview_prep: validate resume/JD length, Bedrock Guardrails PII + injection detection
+- **output_guard** — after interview_prep: validate QuestionList schema, non-empty check, retry once on failure
+- **feedback** — post-coaching: score answers, surface recurring patterns from UserMemory
+- **memory_update** — session end: distil insights → merge into UserMemory in DynamoDB
+- **GapAnalyzerAgent** — deferred entirely; slots in before interview_prep with an `interrupt()` checkpoint when added
+
+Target pipeline (full design):
 
 ```
 [User: PDF + JD]
       │
       ▼
 ┌─────────────────┐
-│  input_guard    │  validates resume text length, detects prompt injection
+│  input_guard    │  (planned) validates length, Bedrock Guardrails
 └────────┬────────┘
          │
          ▼                       ┌─────────────┐
@@ -37,27 +76,19 @@ The backend runs as a FastAPI app on AWS Lambda, behind API Gateway. State is pe
            │
            ▼
 ┌─────────────────┐
-│  output_guard   │  validates QuestionList Pydantic model, checks non-empty
+│  output_guard   │  (planned) validates QuestionList, retries on degenerate output
 └────────┬────────┘
-         │
+         │  [interactive coaching via AgentCore — separate HTTP flow]
          ▼
 ┌──────────────────────┐
-│  answer_coach        │  multi-turn voice conversation, reads UserMemory for personalized tips
-│  (loops per question)│
+│  feedback            │  (planned) score + suggestions, surfaces UserMemory patterns
 └──────────┬───────────┘
            │
            ▼
 ┌──────────────────────┐
-│  feedback            │  score + suggestions, surfaces recurring patterns from UserMemory
-└──────────┬───────────┘
-           │
-           ▼
-┌──────────────────────┐
-│  memory_update       │  distills session insights → merges into UserMemory in DynamoDB
+│  memory_update       │  (planned) merges session insights → UserMemory in DynamoDB
 └──────────────────────┘
 ```
-
-GapAnalyzerAgent is deferred. When added, it will slot in before interview_prep with an interrupt() checkpoint between them.
 
 ---
 
@@ -101,7 +132,9 @@ State is immutable between nodes — each node returns a partial update. LangGra
 
 ## Guardrails Middleware
 
-Guardrails are implemented as dedicated LangGraph nodes rather than decorators or callbacks. This makes them:
+> **Implementation status:** Guard nodes are the intended architecture (ADR-004) but are not yet implemented. `BEDROCK_GUARDRAIL_ID` is provisioned in Lambda env vars with an empty value. The graph currently runs `interview_prep → END` with no guards.
+
+Guardrails will be implemented as dedicated LangGraph nodes rather than decorators or callbacks. This makes them:
 - **Testable** in isolation
 - **Observable** in LangSmith traces (appear as their own spans)
 - **Replaceable** without touching agent logic
@@ -234,7 +267,9 @@ The back-and-forth coaching loop works as follows:
 
 The `runtime_session_id` is returned by AgentCore in the first response and stored in React state. Subsequent turns include it in the request body so AgentCore routes to the same microVM.
 
-**Voice input (planned, not yet implemented):** Browser Web Speech API (`SpeechRecognition`) for STT, `SpeechSynthesis` for optional TTS. Will degrade to text input if the browser doesn't support `SpeechRecognition` (Chrome/Edge only). Voice logic will be isolated in a `useSpeechInput` hook — swappable for AWS Transcribe later.
+**Voice input (shipped — STT only):** Browser Web Speech API (`SpeechRecognition`) for speech-to-text. A mic button appears next to the answer input when the browser supports `SpeechRecognition` (Chrome/Edge); on unsupported browsers it is hidden and the UI degrades to text input. Voice logic is isolated in a `useVoiceInput` hook — swappable for AWS Transcribe later. The Web Speech API types are not in TypeScript's DOM lib, so `SpeechRecognition` is declared in `frontend/src/types/speech.d.ts`.
+
+`SpeechSynthesis` for optional TTS is still planned, not yet implemented.
 
 ---
 

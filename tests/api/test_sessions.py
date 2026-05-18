@@ -1,6 +1,5 @@
 import json
 import uuid
-import boto3
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 from tests.api.conftest import SESSIONS_TABLE, JOBS_TABLE, USERS_TABLE, USER_ID

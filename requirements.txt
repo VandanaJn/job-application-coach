@@ -5,4 +5,5 @@ pypdf>=4.0.0
 requests>=2.31.0
 beautifulsoup4>=4.12.0
 boto3>=1.34.0
+python-multipart>=0.0.9
 uvicorn>=0.29.0
