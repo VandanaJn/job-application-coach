@@ -222,3 +222,4 @@ __marimo__/
 .streamlit/secrets.toml
 /.claude/scheduled_tasks.lock
 /.claude/settings.json
+/.claude/settings.local.json
