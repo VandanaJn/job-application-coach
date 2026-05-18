@@ -33,13 +33,9 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
 
-      # Non-blocking pending a type-cleanup pass: the backend has pre-existing
-      # type errors and missing stubs and has never been mypy-clean. Scoped to
-      # the library packages — `mypy .` collides on the duplicate
-      # lambda/*/handler.py module names. Make this a hard gate once cleaned up.
-      - name: Type check (mypy, non-blocking)
-        run: mypy agents graph api models parsers
-        continue-on-error: true
+      # Config in mypy.ini. infra/ (a separate CDK sub-project) is out of scope.
+      - name: Type check (mypy)
+        run: mypy .
 
       - name: Tests (pytest, 80% coverage gate)
         run: python -m pytest --cov --cov-fail-under=80

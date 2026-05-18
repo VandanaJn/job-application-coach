@@ -62,7 +62,9 @@ def build_answer_coach_agent(user_memory: str = ""):
     )
 
     def run(messages: list[BaseMessage]) -> CoachResult:
-        result = agent.invoke({"messages": messages})
+        # The {"messages": [...]} mapping is the documented create_agent input;
+        # mypy cannot match it to the Pregel.invoke overloads' input TypedDict.
+        result = agent.invoke({"messages": messages})  # type: ignore[call-overload]
         input_tokens, output_tokens = sum_usage(result.get("messages", []))
         return CoachResult(
             coaching=result["structured_response"],
