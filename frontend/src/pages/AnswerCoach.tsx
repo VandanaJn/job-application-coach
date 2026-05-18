@@ -5,6 +5,54 @@ import { useCoachAnswer } from '../hooks/useSessions';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import type { QuestionItem } from '../types';
 
+function useVoiceInput(setText: React.Dispatch<React.SetStateAction<string>>) {
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const baseTextRef = useRef('');
+  const [isListening, setIsListening] = useState(false);
+
+  const isSupported =
+    typeof window !== 'undefined' &&
+    !!(window.SpeechRecognition || (window as Window & { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition);
+
+  function stop() {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setIsListening(false);
+  }
+
+  function toggle(currentText: string) {
+    if (isListening) { stop(); return; }
+
+    const SR =
+      window.SpeechRecognition ??
+      (window as Window & { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition;
+    if (!SR) return;
+
+    const rec = new SR();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = 'en-US';
+    baseTextRef.current = currentText;
+
+    rec.onresult = (event: SpeechRecognitionEvent) => {
+      let transcript = '';
+      for (let i = 0; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+      const base = baseTextRef.current;
+      setText(base + (base && transcript ? ' ' : '') + transcript);
+    };
+    rec.onend = () => setIsListening(false);
+    rec.onerror = () => setIsListening(false);
+
+    recognitionRef.current = rec;
+    rec.start();
+    setIsListening(true);
+  }
+
+  return { isSupported, isListening, toggle, stop };
+}
+
 interface Message {
   role: 'user' | 'coach' | 'error';
   text: string;
@@ -220,6 +268,7 @@ export default function AnswerCoach() {
   );
   const [inputText, setInputText] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
+  const { isSupported: voiceSupported, isListening, toggle: toggleVoice } = useVoiceInput(setInputText);
 
   const questions = status?.questions ?? [];
   const currentConversation = conversations[questionIndex] ?? [];
@@ -385,10 +434,28 @@ export default function AnswerCoach() {
                 value={inputText}
                 onChange={e => setInputText(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Type your answer… (Enter to send, Shift+Enter for new line)"
+                placeholder={isListening ? 'Listening…' : 'Type your answer… (Enter to send, Shift+Enter for new line)'}
                 rows={3}
                 className="flex-1 resize-none text-sm text-gray-900 placeholder-gray-400 outline-none leading-relaxed"
               />
+              {voiceSupported && (
+                <button
+                  type="button"
+                  onClick={() => toggleVoice(inputText)}
+                  aria-label={isListening ? 'Stop recording' : 'Start recording'}
+                  aria-pressed={isListening}
+                  className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
+                    isListening
+                      ? 'bg-red-500 text-white hover:bg-red-600 animate-pulse'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  }`}
+                >
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2H3v2a9 9 0 0 0 8 8.94V23h2v-2.06A9 9 0 0 0 21 12v-2h-2z" />
+                  </svg>
+                </button>
+              )}
               <button
                 onClick={handleSend}
                 disabled={!inputText.trim() || isPending}
