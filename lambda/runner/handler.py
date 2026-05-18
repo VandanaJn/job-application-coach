@@ -1,4 +1,6 @@
 import os
+from typing import Any
+
 import boto3
 
 from graph.orchestrator import build_graph
@@ -17,7 +19,7 @@ def _table():
 def _write_result(session_id: str, user_id: str, status: str, questions=None, error=None, usage=None):
     update_expr = "SET #st = :status"
     expr_names = {"#st": "status"}
-    expr_values = {":status": status}
+    expr_values: dict[str, Any] = {":status": status}
 
     if questions is not None:
         update_expr += ", questions = :questions"
@@ -55,8 +57,11 @@ def handler(event, context):
             "job_description": event["job_description"],
             "num_questions": event.get("num_questions", 5),
             "questions": None,
+            "coaching_sessions": None,
             "status": SessionStatus.RUNNING.value,
             "error": None,
+            "input_tokens": None,
+            "output_tokens": None,
         }
 
         result = build_graph().invoke(state)

@@ -94,7 +94,10 @@ def _extract_html(soup: BeautifulSoup, url: str) -> dict | None:
 
 def _meta_content(soup: BeautifulSoup, attr: str, value: str) -> str:
     tag = soup.find("meta", attrs={attr: value})
-    return tag.get("content", "").strip() if tag else ""
+    if not tag:
+        return ""
+    content = tag.get("content", "")
+    return content.strip() if isinstance(content, str) else ""
 
 
 def _nested(data: dict, *keys: str) -> str:
