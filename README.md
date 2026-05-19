@@ -142,6 +142,7 @@ The frontend runs locally and points to the deployed API Gateway URL via `VITE_A
 ## CI/CD
 
 - **Pull Request** — backend checks (ruff, mypy, pytest + 80% coverage gate) and frontend checks (eslint, type check, vitest); all must pass before merge
+- **Dependency updates** — Dependabot opens weekly version-update PRs (pip, npm, GitHub Actions, Docker) and security-update PRs for advisories; each runs the full CI suite before it can merge
 - **Merge to main** — tests + auto-deploy to dev stack
 - **Prod deploy** — manual trigger via GitHub Actions `workflow_dispatch`
 

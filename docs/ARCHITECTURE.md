@@ -279,9 +279,15 @@ The `runtime_session_id` is returned by AgentCore in the first response and stor
 PR opened/updated
   └── GitHub Actions: ci.yml
         ├── ruff (lint)
-        ├── mypy (type check)
+        ├── mypy (type check — backend + CDK infra)
         ├── pytest (unit + integration)
         └── vitest (frontend tests)
+
+Weekly / on advisory
+  └── Dependabot
+        ├── version-update PRs: pip, npm, GitHub Actions, Docker
+        └── security-update PRs for vulnerability alerts
+        (each PR runs ci.yml before it can merge)
 
 Merge to main
   └── GitHub Actions: deploy-dev.yml

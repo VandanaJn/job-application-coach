@@ -6,6 +6,36 @@ Use this as a reference when discussing the project in interviews.
 
 ---
 
+## ADR-021 — mypy promoted to a blocking CI gate; Dependabot for version updates
+
+**Date:** 2026-05-18
+
+**Context:**
+`ci.yml` (ADR-010) originally ran mypy with `continue-on-error: true` — type errors were reported but never failed the build — because the backend carried pre-existing type errors and missing third-party stubs, and `mypy .` could not even run: `lambda/api/handler.py` and `lambda/runner/handler.py` both resolve to a module named `handler`, and `lambda` is a Python keyword so no `__init__.py` fix applies. Separately, dependencies were updated by hand, so the six `requirements*.txt` files, npm packages, GitHub Actions, and the Lambda Dockerfile drifted with no visibility into security advisories.
+
+**Options considered:**
+- *mypy scoping* — pin the check to a hand-listed set of packages (fragile, silently skips new code), add `__init__.py` files (impossible — `lambda` is a keyword), or set `explicit_package_bases` + `namespace_packages` so each file gets a unique dotted module name
+- *infra type-checking* — check `infra/` from the repo root (its `stacks.*` imports are rooted at `infra/`, so this needs conflicting path config), or give the CDK sub-project its own `infra/mypy.ini` run from `infra/`
+- *dependency updates* — keep updating by hand, adopt Renovate, or adopt Dependabot (native to GitHub, no extra service)
+
+**Decision:**
+- Make mypy a blocking check. The repo-root `mypy.ini` uses `explicit_package_bases` + `namespace_packages` to resolve the duplicate-module collision and excludes `infra/`.
+- Type-check the CDK sub-project separately via `infra/mypy.ini`, run from `infra/`, as its own CI step.
+- Adopt Dependabot for weekly version-update PRs across pip, npm, GitHub Actions, and Docker, plus alerts and security updates.
+
+**Rationale:**
+- A non-blocking check is advisory only — type regressions merge silently; making it blocking is the entire point of running mypy in CI
+- `explicit_package_bases` fixes the collision with config alone — no source-tree changes, and `lambda`'s keyword status stops mattering
+- `infra/` is genuinely a separate sub-project (own venv, own `requirements.txt`, import root at `infra/`); a dedicated config keeps the two type-check domains non-overlapping rather than forcing brittle shared path config
+- Dependabot is native to GitHub — no third-party service; every update PR runs the now-blocking CI suite, so a bad bump cannot land
+- Minor/patch bumps are grouped per ecosystem to keep PR volume manageable; major bumps stay ungrouped for isolated review
+
+**Notes:**
+- `boto3`/`botocore`/`mangum`/`bedrock_agentcore` ship no stubs and are set to `ignore_missing_imports`; `types-requests` is installed for real `requests` stubs
+- The cleanup pass fixed two genuine type bugs: an unsafe `.strip()` on a union in `parsers/job.py`, and an incomplete `GraphState` literal in `lambda/runner/handler.py`
+
+---
+
 ## ADR-020 — Ship interview_prep + answer_coach first; defer guards, tracing, and feedback
 
 **Date:** 2026-05-09
