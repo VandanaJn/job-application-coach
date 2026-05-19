@@ -33,9 +33,14 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
 
-      # Config in mypy.ini. infra/ (a separate CDK sub-project) is out of scope.
+      # Backend type check — config in mypy.ini.
       - name: Type check (mypy)
         run: mypy .
+
+      # The CDK sub-project type-checks separately — config in infra/mypy.ini.
+      - name: Type check infra (mypy)
+        working-directory: infra
+        run: mypy
 
       - name: Tests (pytest, 80% coverage gate)
         run: python -m pytest --cov --cov-fail-under=80

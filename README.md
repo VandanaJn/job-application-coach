@@ -112,6 +112,17 @@ cd frontend && npm test
 
 ---
 
+## Code Quality
+
+```bash
+make lint        # ruff
+make typecheck   # mypy — backend and the CDK infra are type-checked separately
+```
+
+Both run in CI on every pull request and must pass before a branch can merge.
+
+---
+
 ## Deployment
 
 ```bash
@@ -130,7 +141,7 @@ The frontend runs locally and points to the deployed API Gateway URL via `VITE_A
 
 ## CI/CD
 
-- **Pull Request** — lint (ruff), type check (mypy), full test suite
+- **Pull Request** — backend checks (ruff, mypy, pytest + 80% coverage gate) and frontend checks (eslint, type check, vitest); all must pass before merge
 - **Merge to main** — tests + auto-deploy to dev stack
 - **Prod deploy** — manual trigger via GitHub Actions `workflow_dispatch`
 

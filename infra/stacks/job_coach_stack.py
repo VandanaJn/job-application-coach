@@ -42,7 +42,10 @@ class _ApiLocalBundler:
     def __init__(self, project_root: str) -> None:
         self._root = project_root
 
-    def try_bundle(self, output_dir: str, options: BundlingOptions) -> bool:
+    # ILocalBundling.try_bundle is typed with the BundlingOptions struct
+    # expanded into keyword args (jsii convention). These bundlers do not need
+    # the options, so accept and ignore any extra positional/keyword args.
+    def try_bundle(self, output_dir: str, *_args: object, **_kwargs: object) -> bool:
         try:
             subprocess.check_call([
                 sys.executable, "-m", "pip", "install",
@@ -73,7 +76,10 @@ class _RunnerLocalBundler:
     def __init__(self, project_root: str) -> None:
         self._root = project_root
 
-    def try_bundle(self, output_dir: str, options: BundlingOptions) -> bool:
+    # ILocalBundling.try_bundle is typed with the BundlingOptions struct
+    # expanded into keyword args (jsii convention). These bundlers do not need
+    # the options, so accept and ignore any extra positional/keyword args.
+    def try_bundle(self, output_dir: str, *_args: object, **_kwargs: object) -> bool:
         try:
             subprocess.check_call([
                 sys.executable, "-m", "pip", "install",
@@ -104,7 +110,10 @@ class _AnswerCoachAssetBundler:
     def __init__(self, project_root: str) -> None:
         self._root = project_root
 
-    def try_bundle(self, output_dir: str, options: BundlingOptions) -> bool:
+    # ILocalBundling.try_bundle is typed with the BundlingOptions struct
+    # expanded into keyword args (jsii convention). These bundlers do not need
+    # the options, so accept and ignore any extra positional/keyword args.
+    def try_bundle(self, output_dir: str, *_args: object, **_kwargs: object) -> bool:
         try:
             for f in ("Dockerfile", "main.py", "requirements.txt"):
                 shutil.copy(
