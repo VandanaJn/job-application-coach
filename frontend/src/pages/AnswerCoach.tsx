@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useSessionStatus } from '../hooks/useSessions';
 import { useCoachAnswer } from '../hooks/useSessions';
@@ -271,7 +271,10 @@ export default function AnswerCoach() {
   const { isSupported: voiceSupported, isListening, toggle: toggleVoice } = useVoiceInput(setInputText);
 
   const questions = status?.questions ?? [];
-  const currentConversation = conversations[questionIndex] ?? [];
+  const currentConversation = useMemo(
+    () => conversations[questionIndex] ?? [],
+    [conversations, questionIndex]
+  );
   const isComplete = completedQuestions[questionIndex] === true;
 
   useEffect(() => {
