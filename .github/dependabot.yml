@@ -1,0 +1,53 @@
+# Dependabot version updates. Security updates (CVE patches) are configured
+# separately in the repo's Advanced Security settings.
+# Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates
+version: 2
+
+updates:
+  # Python — one entry covers all six requirements*.txt files. The "/"
+  # directory picks up requirements.txt and requirements-dev.txt together.
+  # Minor/patch bumps are grouped into one PR per directory; major bumps
+  # stay ungrouped so breaking changes get isolated review.
+  - package-ecosystem: "pip"
+    directories:
+      - "/"
+      - "/infra"
+      - "/lambda/answer_coach"
+      - "/lambda/api"
+      - "/lambda/runner"
+    schedule:
+      interval: "weekly"
+    groups:
+      python-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 5
+
+  # Frontend npm dependencies.
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    groups:
+      npm-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 5
+
+  # GitHub Actions used in .github/workflows.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  # Base image for the AnswerCoach Lambda container.
+  - package-ecosystem: "docker"
+    directory: "/lambda/answer_coach"
+    schedule:
+      interval: "weekly"
