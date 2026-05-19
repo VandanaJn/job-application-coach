@@ -24,7 +24,7 @@ help:
 	@echo "  test            Run backend tests"
 	@echo "  test-cov        Run backend tests with coverage"
 	@echo "  lint            Run ruff linter"
-	@echo "  typecheck       Run mypy type checker"
+	@echo "  typecheck       Run mypy on backend and infra"
 	@echo ""
 	@echo "Frontend"
 	@echo "  install-frontend  Install frontend dependencies"
@@ -67,6 +67,7 @@ lint:
 
 typecheck:
 	mypy .
+	cd infra && mypy
 
 # Frontend
 install-frontend:
